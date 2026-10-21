@@ -1,0 +1,14 @@
+@PokeArena.Api_HostAddress = http://localhost:5034
+
+# Este archivo permite probar manualmente el endpoint definido en Program.cs.
+# Reemplace <jwt-admin> por un token emitido para un usuario con rol Admin.
+GET {{PokeArena.Api_HostAddress}}/api/cards?pageSize=20
+Accept: application/json
+Authorization: Bearer <jwt-admin>
+
+###
+
+# Los filtros se combinan con AND y se ejecutan en PostgreSQL mediante EF Core.
+GET {{PokeArena.Api_HostAddress}}/api/cards?q=dragon&minCost=2&maxCost=5&type=Agua
+Accept: application/json
+Authorization: Bearer <jwt-admin>

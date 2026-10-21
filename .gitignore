@@ -1,0 +1,35 @@
+# Build output
+**/bin/
+**/obj/
+
+# Visual Studio and VS Code local state
+.vs/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+*.user
+*.suo
+
+# Test and coverage output
+TestResults/
+**/TestResults/
+coverage/
+*.trx
+
+# Local databases and runtime files
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+
+# Local environment and secrets
+.env
+.env.*
+!.env.example
+appsettings.Local.json
+appsettings.*.local.json
+
+# OS files
+.DS_Store
+Thumbs.db
