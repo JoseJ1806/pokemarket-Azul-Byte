@@ -20,7 +20,8 @@ namespace PokeArena.Tests;
 // PRUEBAS DE INTEGRACIÓN DE LA BÚSQUEDA.
 // WebApplicationFactory conecta este proyecto con Program.cs sin levantar un
 // servidor manual. La factoría crea datos controlados en PostgreSQL de pruebas.
-public class CardsSearchTests : IClassFixture<CardsApiFactory>
+[Collection("Cards API")]
+public class CardsSearchTests
 {
     private readonly CardsApiFactory factory;
 
@@ -121,7 +122,7 @@ public class CardsSearchTests : IClassFixture<CardsApiFactory>
         var json = await Get(client, "abilityCode=S%C3%8DN%20HABILIDAD");
         var item = json.GetProperty("items").EnumerateArray().First();
 
-        foreach (var property in new[] { "code", "name", "imageUrl", "imageStatus", "cost", "power", "type", "rarity", "abilityCode", "abilityTrigger", "abilityEffect" })
+        foreach (var property in new[] { "code", "name", "imageUrl", "thumbnailUrl", "imageStatus", "isAvailable", "cost", "power", "type", "rarity", "abilityCode", "abilityTrigger", "abilityEffect", "abilityAffectedType" })
             Assert.True(item.TryGetProperty(property, out _), property);
     }
 
@@ -145,6 +146,8 @@ public class CardsSearchTests : IClassFixture<CardsApiFactory>
 
 public sealed class CardsApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
 {
+    private static readonly SemaphoreSlim DatabaseLock = new(1, 1);
+
     // Esta base está separada de la base de desarrollo para que los tests puedan
     // limpiar y volver a sembrar cartas sin destruir datos reales.
     private readonly string connectionString =
@@ -180,19 +183,27 @@ public sealed class CardsApiFactory : WebApplicationFactory<Program>, IAsyncLife
     public async Task InitializeAsync()
     {
         // La base de pruebas es PostgreSQL separada y se llena con datos controlados.
-        using var scope = Services.CreateScope();
-        var db = scope.ServiceProvider.GetRequiredService<PokeArenaDbContext>();
-        // Crea el esquema y habilita unaccent dentro de la base aislada.
-        await db.Database.EnsureCreatedAsync();
-        await db.Database.ExecuteSqlRawAsync("CREATE EXTENSION IF NOT EXISTS unaccent;");
-        await db.Database.ExecuteSqlRawAsync("TRUNCATE TABLE cards RESTART IDENTITY;");
-        // Los datos no dependen de cartas existentes en la base del desarrollador.
-        db.Cards.AddRange(
-            new Card { Code = "DRG-01", Name = "Dragón Azul", ImageUrl = "https://img/1", ImageStatus = "Lista", Cost = 3, Power = 120, Type = "Agua", Rarity = "Rara", AbilityCode = "AB-01", AbilityTrigger = "Combate", AbilityEffect = "Roba una carta" },
-            new Card { Code = "PIK-01", Name = "Pikachu", ImageUrl = "https://img/2", ImageStatus = "Lista", Cost = 1, Power = 80, Type = "Electrico", Rarity = "Comun" },
-            new Card { Code = "PIK-02", Name = "Pikachu V", ImageUrl = "https://img/3", ImageStatus = "Pendiente", Cost = 2, Power = 100, Type = "Electrico", Rarity = "Rara" },
-            new Card { Code = "FIR-01", Name = "Fuego", ImageUrl = "https://img/4", ImageStatus = "Lista", Cost = 5, Power = 200, Type = "Fuego", Rarity = "Comun" });
-        await db.SaveChangesAsync();
+        await DatabaseLock.WaitAsync();
+        try
+        {
+            using var scope = Services.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<PokeArenaDbContext>();
+            // Solo se recrea la base aislada de tests para aplicar todas las migraciones.
+            await db.Database.EnsureDeletedAsync();
+            await db.Database.MigrateAsync();
+            await db.Database.ExecuteSqlRawAsync("TRUNCATE TABLE cards RESTART IDENTITY;");
+            // Los datos no dependen de cartas existentes en la base del desarrollador.
+            db.Cards.AddRange(
+                new Card { Code = "DRG-01", Name = "Dragón Azul", ImageUrl = "https://img/1", ImageStatus = "Lista", Cost = 3, Power = 120, Type = "Agua", Rarity = "Rara", AbilityCode = "AB-01", AbilityTrigger = "Combate", AbilityEffect = "Roba una carta" },
+                new Card { Code = "PIK-01", Name = "Pikachu", ImageUrl = "https://img/2", ImageStatus = "Lista", Cost = 1, Power = 80, Type = "Electrico", Rarity = "Comun" },
+                new Card { Code = "PIK-02", Name = "Pikachu V", ImageUrl = "https://img/3", ImageStatus = "Pendiente", Cost = 2, Power = 100, Type = "Electrico", Rarity = "Rara" },
+                new Card { Code = "FIR-01", Name = "Fuego", ImageUrl = "https://img/4", ImageStatus = "Lista", Cost = 5, Power = 200, Type = "Fuego", Rarity = "Comun" });
+            await db.SaveChangesAsync();
+        }
+        finally
+        {
+            DatabaseLock.Release();
+        }
     }
 
     public async Task AddCardAsync(string name, int cost)
@@ -202,6 +213,13 @@ public sealed class CardsApiFactory : WebApplicationFactory<Program>, IAsyncLife
         var db = scope.ServiceProvider.GetRequiredService<PokeArenaDbContext>();
         db.Cards.Add(new Card { Code = "NEW-01", Name = name, ImageStatus = "Pendiente", Cost = cost, Type = "Agua", Rarity = "Comun" });
         await db.SaveChangesAsync();
+    }
+
+    public async Task<int> CountCardsByIdempotencyKeyAsync(string key)
+    {
+        using var scope = Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<PokeArenaDbContext>();
+        return await db.Cards.CountAsync(card => card.IdempotencyKey == key);
     }
 
     Task IAsyncLifetime.DisposeAsync() => Task.CompletedTask;

@@ -1,10 +1,14 @@
 using System.Text;
 using System.Text.Json;
 using System.Globalization;
+using System.Data;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using PokeArena.Api.Data;
+using PokeArena.Api.Models;
+using PokeArena.Api.Services;
 
 // ARCHIVO PRINCIPAL DE LA API.
 // Aquí se registra la configuración, autenticación, autorización y PostgreSQL.
@@ -53,6 +57,7 @@ builder.Services.AddDbContext<PokeArenaDbContext>(options =>
     // La cadena DefaultConnection se encuentra en la configuración de la API.
     options.UseNpgsql(
         builder.Configuration.GetConnectionString("DefaultConnection")));
+    builder.Services.AddSingleton<CardImageService>();
 
 // Construye la aplicación con todos los servicios registrados arriba.
 var app = builder.Build();
@@ -68,6 +73,7 @@ app.UseHttpsRedirection();
 // Por eso RequireAuthorization puede producir 401 o 403 correctamente.
 app.UseAuthentication();
 app.UseAuthorization();
+app.UseStaticFiles();
 
 // Endpoint de búsqueda: recibe filtros HTTP y devuelve una página de cartas.
 app.MapGet("/api/cards", async (
@@ -345,14 +351,17 @@ if (maxPower.HasValue && (maxPower < 0 || maxPower % 10 != 0))
             card.Code,
             card.Name,
             card.ImageUrl,
+            card.ThumbnailUrl,
             card.ImageStatus,
+            card.IsAvailable,
             card.Cost,
             card.Power,
             card.Type,
             card.Rarity,
             card.AbilityCode,
             card.AbilityTrigger,
-            card.AbilityEffect
+            card.AbilityEffect,
+            card.AbilityAffectedType
         })
         .ToListAsync(cancellationToken);
 
@@ -379,6 +388,130 @@ if (maxPower.HasValue && (maxPower < 0 || maxPower % 10 != 0))
     .WithName("SearchCards")
     .RequireAuthorization("AdminOnly");
 
+// Devuelve las habilidades existentes para que el formulario de Crear Carta
+// seleccione un código válido, incluyendo HAB-000.
+app.MapGet("/api/abilities", async (
+    PokeArenaDbContext db,
+    CancellationToken cancellationToken) =>
+    Results.Ok(await db.Abilities.AsNoTracking()
+        .OrderBy(ability => ability.Code)
+        .Select(ability => new
+        {
+            ability.Code,
+            ability.Name,
+            ability.Trigger,
+            ability.Effect,
+            ability.AffectedType,
+            ability.IsEvolution,
+            ability.TargetCardCode
+        })
+        .ToListAsync(cancellationToken)))
+    .WithName("ListAbilities")
+    .RequireAuthorization("AdminOnly");
+
+// Endpoint MVP para que un administrador cree una carta con una imagen.
+// La petición multipart/form-data contiene los campos de la carta y el archivo image.
+app.MapPost("/api/cards", async (
+    [FromForm] CreateCardRequest request,
+    HttpRequest httpRequest,
+    PokeArenaDbContext db,
+    CardImageService imageService,
+    IWebHostEnvironment environment,
+    CancellationToken cancellationToken) =>
+{
+    var idempotencyKey = httpRequest.Headers["Idempotency-Key"].ToString();
+    if (string.IsNullOrWhiteSpace(idempotencyKey))
+        return Results.BadRequest(new { error = "Idempotency-Key es obligatorio." });
+
+    if (string.IsNullOrWhiteSpace(request.Name))
+        return Results.BadRequest(new { error = "name es obligatorio." });
+
+    if (request.Cost is < 0 or > 10)
+        return Results.BadRequest(new { error = "cost debe estar entre 0 y 10." });
+
+    if (request.Power is < -20 or > 20)
+        return Results.BadRequest(new { error = "power debe estar entre -20 y 20." });
+
+    if (!CardRules.TypePrefixes.TryGetValue(request.Type ?? string.Empty, out var prefix))
+        return Results.BadRequest(new { error = "type debe ser Fuego, Agua, Planta, Eléctrico, Psíquico o Lucha." });
+
+    if (!CardRules.Rarities.Contains(request.Rarity ?? string.Empty))
+        return Results.BadRequest(new { error = "rarity debe ser Común, Poco común, Rara o Legendaria." });
+
+    if (request.Image is null)
+        return Results.BadRequest(new { error = "image es obligatorio." });
+
+    var abilityCode = request.AbilityCode?.Trim();
+    if (string.IsNullOrWhiteSpace(abilityCode))
+        return Results.BadRequest(new { error = "abilityCode es obligatorio; seleccione HAB-000 si no tiene habilidad." });
+
+    var ability = await db.Abilities.SingleOrDefaultAsync(
+        item => item.Code == abilityCode,
+        cancellationToken);
+    if (ability is null)
+        return Results.BadRequest(new { error = "abilityCode no existe." });
+
+    await using var transaction = await db.Database.BeginTransactionAsync(
+        IsolationLevel.Serializable, cancellationToken);
+    await db.Database.ExecuteSqlRawAsync(
+        "SELECT pg_advisory_xact_lock(hashtext({0}))", new object[] { idempotencyKey }, cancellationToken);
+
+    var existing = await db.Cards.SingleOrDefaultAsync(
+        card => card.IdempotencyKey == idempotencyKey,
+        cancellationToken);
+    if (existing is not null)
+        return Results.Ok(existing);
+
+    await db.Database.ExecuteSqlRawAsync(
+        "SELECT pg_advisory_xact_lock(hashtext({0}))", new object[] { prefix }, cancellationToken);
+    var code = await GenerateCardCodeAsync(db, prefix, cancellationToken);
+
+    if (ability.IsEvolution)
+    {
+        if (string.IsNullOrWhiteSpace(ability.TargetCardCode))
+            return Results.BadRequest(new { error = "La habilidad de evolución debe tener una carta destino." });
+
+        if (await EvolutionCreatesCycleAsync(db, code, ability.TargetCardCode, cancellationToken))
+            return Results.BadRequest(new { error = "La habilidad de evolución crea un ciclo o apunta a la misma carta." });
+    }
+
+    var rootPath = environment.WebRootPath ?? Path.Combine(environment.ContentRootPath, "wwwroot");
+    var originalPath = Path.Combine(rootPath, "uploads", "cards", code + "-large" + GetImageExtension(request.Image.ContentType));
+    var thumbnailPath = Path.Combine(rootPath, "uploads", "cards", code + "-small.webp");
+
+    var imageResult = await imageService.ValidateAndStoreAsync(
+        request.Image, originalPath, thumbnailPath, cancellationToken);
+    if (!imageResult.IsValid)
+        return Results.BadRequest(new { error = imageResult.Error });
+
+    var card = new Card
+    {
+        Code = code,
+        Name = request.Name.Trim(),
+        ImageUrl = $"/uploads/cards/{Path.GetFileName(originalPath)}",
+        ThumbnailUrl = $"/uploads/cards/{Path.GetFileName(thumbnailPath)}",
+        ImageStatus = "Lista",
+        IsAvailable = true,
+        IdempotencyKey = idempotencyKey,
+        Cost = request.Cost,
+        Power = request.Power,
+        Type = request.Type!,
+        Rarity = request.Rarity!,
+        AbilityCode = ability.Code,
+        AbilityTrigger = ability.Trigger,
+        AbilityEffect = ability.Effect,
+        AbilityAffectedType = ability.AffectedType
+    };
+
+    db.Cards.Add(card);
+    await db.SaveChangesAsync(cancellationToken);
+    await transaction.CommitAsync(cancellationToken);
+    return Results.Created($"/api/cards/{card.Id}", card);
+})
+    .WithName("CreateCard")
+    .DisableAntiforgery()
+    .RequireAuthorization("AdminOnly");
+
 app.Run();
 
 static string EscapeLike(string value) =>
@@ -402,7 +535,98 @@ static string EncodeCursor(CardCursor cursor) => Convert.ToBase64String(
         Encoding.UTF8.GetBytes(JsonSerializer.Serialize(cursor)))
     .Replace('+', '-').Replace('/', '_').TrimEnd('=');
 
+static async Task<string> GenerateCardCodeAsync(
+    PokeArenaDbContext db,
+    string prefix,
+    CancellationToken cancellationToken)
+{
+    var codes = await db.Cards
+        .Where(card => card.Code.Contains("-" + prefix + "-"))
+        .Select(card => card.Code)
+        .ToListAsync(cancellationToken);
+    var next = codes
+        .Select(code => int.TryParse(code[(code.LastIndexOf('-') + 1)..], out var number) ? number : 0)
+        .DefaultIfEmpty(0)
+        .Max() + 1;
+    return $"PKA-{prefix}-{next:000}";
+}
+
+static async Task<bool> EvolutionCreatesCycleAsync(
+    PokeArenaDbContext db,
+    string newCardCode,
+    string targetCardCode,
+    CancellationToken cancellationToken)
+{
+    var visited = new HashSet<string>(StringComparer.Ordinal);
+    var currentCode = targetCardCode;
+
+    while (!string.IsNullOrWhiteSpace(currentCode))
+    {
+        if (currentCode.Equals(newCardCode, StringComparison.Ordinal) || !visited.Add(currentCode))
+            return true;
+
+        var targetAbilityCode = await db.Cards
+            .Where(card => card.Code == currentCode)
+            .Select(card => card.AbilityCode)
+            .SingleOrDefaultAsync(cancellationToken);
+        if (string.IsNullOrWhiteSpace(targetAbilityCode))
+            return false;
+
+        currentCode = await db.Abilities
+            .Where(ability => ability.Code == targetAbilityCode)
+            .Select(ability => ability.TargetCardCode)
+            .SingleOrDefaultAsync(cancellationToken);
+    }
+
+    return false;
+}
+
+static string GetImageExtension(string? contentType) => contentType?.ToLowerInvariant() switch
+{
+    "image/png" => ".png",
+    "image/jpeg" => ".jpg",
+    "image/webp" => ".webp",
+    _ => ".upload"
+};
+
 // LastId marca desde dónde continuar y SnapshotId fija el conjunto inicial.
 record CardCursor(int LastId, int SnapshotId);
+
+sealed class CreateCardRequest
+{
+    public string? Name { get; set; }
+
+    public int Cost { get; set; }
+
+    public int Power { get; set; }
+
+    public string? Type { get; set; }
+
+    public string? Rarity { get; set; }
+
+    public string? AbilityCode { get; set; }
+
+    public IFormFile? Image { get; set; }
+}
+
+static class CardRules
+{
+    public static readonly IReadOnlyDictionary<string, string> TypePrefixes =
+        new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["Fuego"] = "FUE",
+            ["Agua"] = "AGU",
+            ["Planta"] = "PLA",
+            ["Eléctrico"] = "ELE",
+            ["Psíquico"] = "PSI",
+            ["Lucha"] = "LUC"
+        };
+
+    public static readonly IReadOnlySet<string> Rarities =
+        new HashSet<string>(StringComparer.Ordinal)
+        {
+            "Común", "Poco común", "Rara", "Legendaria"
+        };
+}
 
 public partial class Program;

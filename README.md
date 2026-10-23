@@ -109,3 +109,60 @@ Authorization: Bearer <jwt-admin>
 GET /api/cards?pageSize=20&cursor=<nextCursor>
 Authorization: Bearer <jwt-admin>
 ```
+
+## Cómo se crea una carta
+
+Para crear una carta, un administrador envía sus datos y una imagen a
+`POST /api/cards`. La API hace todo el proceso en una sola solicitud:
+
+1. Comprueba que los datos estén completos y sean válidos.
+2. Busca la habilidad seleccionada. Si la carta no tiene habilidad, se debe usar
+   `HAB-000` (`Sin Habilidad`).
+3. Genera automáticamente un código para la carta, por ejemplo `PKA-AGU-001`.
+4. Guarda la imagen original y crea una miniatura de 200 x 280 píxeles.
+5. Guarda la carta y la marca como disponible solo cuando las dos imágenes se
+   crearon correctamente.
+
+La petición debe usar `multipart/form-data`, incluir un encabezado
+`Idempotency-Key` único y contener estos campos:
+
+| Campo | Qué representa |
+| --- | --- |
+| `Name` | Nombre de la carta |
+| `Cost` | Costo, entre 0 y 10 |
+| `Power` | Poder, entre -20 y 20 |
+| `Type` | `Fuego`, `Agua`, `Planta`, `Eléctrico`, `Psíquico` o `Lucha` |
+| `Rarity` | `Común`, `Poco común`, `Rara` o `Legendaria` |
+| `AbilityCode` | Código de una habilidad existente |
+| `Image` | Imagen PNG, JPG o WebP |
+
+La imagen no puede superar 5 MB, debe tener formato vertical 5:7 y una
+resolución mínima de 600 x 840 píxeles. Las habilidades disponibles se pueden
+consultar con `GET /api/abilities`.
+
+Ejemplo con PowerShell:
+
+```powershell
+$form = @{
+    Name = "Charizard"
+    Cost = 5
+    Power = 18
+    Type = "Fuego"
+    Rarity = "Rara"
+    AbilityCode = "HAB-000"
+    Image = Get-Item ".\charizard.png"
+}
+
+Invoke-RestMethod `
+    -Uri "http://localhost:5080/api/cards" `
+    -Method Post `
+    -Headers @{
+        Authorization = "Bearer <jwt-admin>"
+        "Idempotency-Key" = [guid]::NewGuid().ToString()
+    } `
+    -Form $form
+```
+
+Si se repite la misma solicitud con el mismo `Idempotency-Key`, la API devuelve
+la carta existente en lugar de crear una segunda. Si algún dato o la imagen no
+es válido, la API responde con un error y la carta no se guarda.

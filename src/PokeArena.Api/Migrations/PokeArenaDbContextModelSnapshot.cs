@@ -21,6 +21,49 @@ namespace PokeArena.Api.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
+            modelBuilder.Entity("PokeArena.Api.Models.Ability", b =>
+                {
+                    b.Property<string>("Code")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<string>("AffectedType")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<string>("Effect")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
+                    b.Property<bool>("IsEvolution")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("TargetCardCode")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<string>("Trigger")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.HasKey("Code");
+
+                    b.ToTable("abilities", (string)null);
+
+                    b.HasData(
+                        new
+                        {
+                            Code = "HAB-000",
+                            IsEvolution = false,
+                            Name = "Sin Habilidad"
+                        });
+                });
+
             modelBuilder.Entity("PokeArena.Api.Models.Card", b =>
                 {
                     b.Property<int>("Id")
@@ -28,6 +71,10 @@ namespace PokeArena.Api.Migrations
                         .HasColumnType("integer");
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("AbilityAffectedType")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
 
                     b.Property<string>("AbilityCode")
                         .HasMaxLength(50)
@@ -49,6 +96,10 @@ namespace PokeArena.Api.Migrations
                     b.Property<int>("Cost")
                         .HasColumnType("integer");
 
+                    b.Property<string>("IdempotencyKey")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
                     b.Property<string>("ImageStatus")
                         .IsRequired()
                         .HasMaxLength(30)
@@ -57,6 +108,9 @@ namespace PokeArena.Api.Migrations
                     b.Property<string>("ImageUrl")
                         .HasMaxLength(2048)
                         .HasColumnType("character varying(2048)");
+
+                    b.Property<bool>("IsAvailable")
+                        .HasColumnType("boolean");
 
                     b.Property<string>("Name")
                         .IsRequired()
@@ -71,6 +125,10 @@ namespace PokeArena.Api.Migrations
                         .HasMaxLength(50)
                         .HasColumnType("character varying(50)");
 
+                    b.Property<string>("ThumbnailUrl")
+                        .HasMaxLength(2048)
+                        .HasColumnType("character varying(2048)");
+
                     b.Property<string>("Type")
                         .IsRequired()
                         .HasMaxLength(50)
@@ -79,6 +137,9 @@ namespace PokeArena.Api.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("Code")
+                        .IsUnique();
+
+                    b.HasIndex("IdempotencyKey")
                         .IsUnique();
 
                     b.HasIndex("Name");

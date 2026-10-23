@@ -17,8 +17,17 @@ public class Card
     // Dirección de la imagen; puede estar vacía mientras se carga la imagen.
     public string? ImageUrl { get; set; }
 
+    // Dirección de la miniatura 200 x 280 usada durante la partida.
+    public string? ThumbnailUrl { get; set; }
+
     // Estado de procesamiento de la imagen, por ejemplo Pendiente o Lista.
     public string ImageStatus { get; set; } = "Pendiente";
+
+    // Indica si ya existen la imagen grande y la miniatura.
+    public bool IsAvailable { get; set; }
+
+    // Permite repetir una petición de red sin crear otra carta.
+    public string? IdempotencyKey { get; set; }
 
     // Costo de uso de la carta.
     public int Cost { get; set; }
@@ -40,4 +49,7 @@ public class Card
 
     // Efecto que produce la habilidad.
     public string? AbilityEffect { get; set; }
+
+    // Tipo de carta afectado por la habilidad, si la habilidad lo limita.
+    public string? AbilityAffectedType { get; set; }
 }

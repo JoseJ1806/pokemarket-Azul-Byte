@@ -12,6 +12,8 @@ public class PokeArenaDbContext(DbContextOptions<PokeArenaDbContext> options)
     // Representa la tabla cards y permite consultarla desde la API con EF Core.
     public DbSet<Card> Cards => Set<Card>();
 
+    public DbSet<Ability> Abilities => Set<Ability>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         // Este bloque define cómo Card se convierte en la tabla cards: nombres,
@@ -32,6 +34,12 @@ public class PokeArenaDbContext(DbContextOptions<PokeArenaDbContext> options)
 
             entity.Property(card => card.ImageUrl)
                 .HasMaxLength(2048);
+
+            entity.Property(card => card.ThumbnailUrl)
+                .HasMaxLength(2048);
+
+            entity.Property(card => card.IdempotencyKey)
+                .HasMaxLength(200);
 
             entity.Property(card => card.ImageStatus)
                 .HasMaxLength(30)
@@ -54,9 +62,32 @@ public class PokeArenaDbContext(DbContextOptions<PokeArenaDbContext> options)
             entity.Property(card => card.AbilityEffect)
                 .HasMaxLength(1000);
 
+            entity.Property(card => card.AbilityAffectedType)
+                .HasMaxLength(50);
+
             entity.HasIndex(card => card.Code).IsUnique();
+            entity.HasIndex(card => card.IdempotencyKey).IsUnique();
             entity.HasIndex(card => card.Name);
             entity.HasIndex(card => new { card.Cost, card.Power });
+        });
+
+        modelBuilder.Entity<Ability>(entity =>
+        {
+            entity.ToTable("abilities");
+            entity.HasKey(ability => ability.Code);
+            entity.Property(ability => ability.Code).HasMaxLength(50);
+            entity.Property(ability => ability.Name).HasMaxLength(100).IsRequired();
+            entity.Property(ability => ability.Trigger).HasMaxLength(200);
+            entity.Property(ability => ability.Effect).HasMaxLength(1000);
+            entity.Property(ability => ability.AffectedType).HasMaxLength(50);
+            entity.Property(ability => ability.TargetCardCode).HasMaxLength(50);
+        });
+
+        modelBuilder.Entity<Ability>().HasData(new Ability
+        {
+            Code = "HAB-000",
+            Name = "Sin Habilidad",
+            IsEvolution = false
         });
     }
 }
