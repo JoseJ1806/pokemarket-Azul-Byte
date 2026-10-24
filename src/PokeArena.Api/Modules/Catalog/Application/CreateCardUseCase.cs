@@ -76,7 +76,7 @@ public sealed class CreateCardUseCase(ICardRepository cards, ProcessImageUseCase
         // Un reintento de red con la misma llave devuelve la carta ya creada sin procesar la imagen.
         var existing = await cards.FindByIdempotencyKeyAsync(command.IdempotencyKey, cancellationToken);
         if (existing is not null)
-            return CreateCardResult.Replayed(existing);
+            return ReplayOrConflict(existing, command, ability.Code);
 
         var prepared = images.Prepare(command.Image, ImageRequirements.ForCard, cancellationToken);
         if (prepared.Error is not null)
@@ -87,7 +87,7 @@ public sealed class CreateCardUseCase(ICardRepository cards, ProcessImageUseCase
         // Otra solicitud con la misma llave pudo terminar mientras esta esperaba su turno.
         var concurrent = await scope.FindExistingAsync(cancellationToken);
         if (concurrent is not null)
-            return CreateCardResult.Replayed(concurrent);
+            return ReplayOrConflict(concurrent, command, ability.Code);
 
         var code = await scope.ReserveNextCodeAsync(cancellationToken);
 
@@ -132,6 +132,28 @@ public sealed class CreateCardUseCase(ICardRepository cards, ProcessImageUseCase
             await images.DiscardAsync(stored, CancellationToken.None);
             throw;
         }
+    }
+
+    // Misma llave y mismos datos es un reintento válido. Misma llave con datos distintos es un
+    // uso incorrecto de la llave y se rechaza con 409. La imagen no se compara porque no se
+    // guarda su huella, solo los campos de la carta.
+    private static CreateCardResult ReplayOrConflict(Card existing, CreateCardCommand command, string abilityCode)
+    {
+        var sameRequest =
+            existing.Name == command.Name!.Trim()
+            && existing.Cost == command.Cost
+            && existing.Power == command.Power
+            && existing.Type == command.Type
+            && existing.Rarity == command.Rarity
+            && existing.AbilityCode == abilityCode;
+
+        return sameRequest
+            ? CreateCardResult.Replayed(existing)
+            : CreateCardResult.Failed(new DomainError(
+                DomainErrorKind.Conflict,
+                "idempotency-key-conflict",
+                "La Idempotency-Key ya se usó con datos distintos. Use una llave nueva para crear otra carta.",
+                "Idempotency-Key"));
     }
 
     private static CreateCardResult Invalid(string code, string message, string field) =>

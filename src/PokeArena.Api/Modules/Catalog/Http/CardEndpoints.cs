@@ -20,10 +20,37 @@ public static class CardEndpoints
             .Produces<CardResponse>(StatusCodes.Status201Created)
             .Produces<CardResponse>(StatusCodes.Status200OK)
             .ProducesProblem(StatusCodes.Status400BadRequest)
+            .ProducesProblem(StatusCodes.Status409Conflict)
             .Produces(StatusCodes.Status401Unauthorized)
             .Produces(StatusCodes.Status403Forbidden);
 
         return app;
+    }
+
+    // Ficha de una carta con el detalle de su habilidad. Solo para administradores,
+    // porque también muestra cartas cuya imagen está Pendiente o Fallida.
+    public static IEndpointRouteBuilder MapGetCard(this IEndpointRouteBuilder app)
+    {
+        app.MapGet("/api/cards/{id:int}", GetCardAsync)
+            .WithName("GetCard")
+            .RequireAuthorization(AdminAuthorization.PolicyName)
+            .Produces<CardDetailResponse>(StatusCodes.Status200OK)
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .Produces(StatusCodes.Status401Unauthorized)
+            .Produces(StatusCodes.Status403Forbidden);
+
+        return app;
+    }
+
+    private static async Task<IResult> GetCardAsync(
+        int id,
+        GetCardUseCase useCase,
+        CancellationToken cancellationToken)
+    {
+        var result = await useCase.ExecuteAsync(id, cancellationToken);
+        return result.Error is { } error
+            ? ProblemResults.From(error)
+            : Results.Ok(CardDetailResponse.From(result.Card!, result.Ability));
     }
 
     // 201 cuando se crea la carta y 200 cuando la misma Idempotency-Key ya la había creado.

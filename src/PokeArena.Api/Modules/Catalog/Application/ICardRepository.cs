@@ -9,6 +9,8 @@ public interface ICardRepository
 {
     Task<Card?> FindByIdempotencyKeyAsync(string idempotencyKey, CancellationToken cancellationToken);
 
+    Task<Card?> FindByIdAsync(int id, CancellationToken cancellationToken);
+
     Task<Ability?> FindAbilityAsync(string code, CancellationToken cancellationToken);
 
     // Abre una unidad de trabajo exclusiva para una llave de idempotencia y un tipo de carta.

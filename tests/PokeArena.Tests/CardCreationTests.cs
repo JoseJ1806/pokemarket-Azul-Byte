@@ -104,6 +104,33 @@ public class CardCreationTests
         Assert.Equal(1, await factory.CountCardsByIdempotencyKeyAsync("retry-card-001"));
     }
 
+    [Fact]
+    public async Task CreateCard_SameKeyWithDifferentData_ReturnsConflict()
+    {
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Add("X-Test-Role", "Admin");
+        client.DefaultRequestHeaders.Add("Idempotency-Key", "conflict-card-001");
+
+        using var firstContent = CreateMultipartContent();
+        AddValidFields(firstContent);
+        var first = await client.PostAsync("/api/cards", firstContent);
+        Assert.Equal(HttpStatusCode.Created, first.StatusCode);
+
+        using var secondContent = CreateMultipartContent();
+        secondContent.Add(new StringContent("Otra carta distinta"), "Name");
+        secondContent.Add(new StringContent("2"), "Cost");
+        secondContent.Add(new StringContent("10"), "Power");
+        secondContent.Add(new StringContent("Agua"), "Type");
+        secondContent.Add(new StringContent("Común"), "Rarity");
+        secondContent.Add(new StringContent("HAB-000"), "AbilityCode");
+        var second = await client.PostAsync("/api/cards", secondContent);
+
+        Assert.Equal(HttpStatusCode.Conflict, second.StatusCode);
+        using var json = JsonDocument.Parse(await second.Content.ReadAsStringAsync());
+        Assert.Equal("idempotency-key-conflict", json.RootElement.GetProperty("code").GetString());
+        Assert.Equal(1, await factory.CountCardsByIdempotencyKeyAsync("conflict-card-001"));
+    }
+
     private static MultipartFormDataContent CreateMultipartContent()
     {
         var content = new MultipartFormDataContent();

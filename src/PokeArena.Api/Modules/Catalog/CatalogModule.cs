@@ -12,12 +12,14 @@ public static class CatalogModule
     {
         services.AddScoped<ICardRepository, EfCardRepository>();
         services.AddScoped<CreateCardUseCase>();
+        services.AddScoped<GetCardUseCase>();
         return services;
     }
 
     public static IEndpointRouteBuilder MapCatalogEndpoints(this IEndpointRouteBuilder app)
     {
         app.MapCreateCard();
+        app.MapGetCard();
         return app;
     }
 }

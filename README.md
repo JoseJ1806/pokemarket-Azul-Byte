@@ -5,14 +5,14 @@
 - `src/PokeArena.Api/Program.cs`: punto de entrada de la API, configuración de servicios, seguridad, registro de los módulos y endpoint `GET /api/cards`.
 - `src/PokeArena.Api/Models/`: entidades `Card` y `Ability`, compartidas por la búsqueda y las migraciones.
 - `src/PokeArena.Api/Modules/`: monolito modular con núcleo hexagonal (ADR-001). Cada módulo tiene sus casos de uso, sus puertos y sus adaptadores:
-  - `Catalog/`: módulo Catálogo de Cartas. `Domain/` guarda las reglas y los estados, `Application/` el caso de uso `CreateCardUseCase` y el puerto `ICardRepository` (RepositorioCartas), `Infrastructure/` el adaptador `EfCardRepository` y `Http/` el endpoint `POST /api/cards`.
+  - `Catalog/`: módulo Catálogo de Cartas. `Domain/` guarda las reglas y los estados, `Application/` los casos de uso `CreateCardUseCase` y `GetCardUseCase` y el puerto `ICardRepository` (RepositorioCartas), `Infrastructure/` el adaptador `EfCardRepository` y `Http/` los endpoints `POST /api/cards` y `GET /api/cards/{id}`.
   - `Images/`: módulo Imágenes. `ProcessImageUseCase` valida la imagen y genera la versión pequeña con 3 intentos (ADR-002). Sus puertos son `IImageCodec` y `IImageStore` (AlmacenImagenes), implementados con SkiaSharp y el sistema de archivos.
   - `Identity/`: módulo Identidad y Acceso. Define la política `AdminOnly`.
 - `src/PokeArena.Api/Shared/`: manejo de errores con formato único (`DomainError` y `ProblemResults`).
 - `src/PokeArena.Api/Data/`: `DbContext` y factoría usada por Entity Framework Core para conectarse a PostgreSQL.
 - `src/PokeArena.Api/Migrations/`: cambios versionados del esquema de la base de datos. Los archivos `*.Designer.cs` son generados por EF Core y no se editan manualmente.
 - `src/PokeArena.GameEngine/`: espacio reservado para reglas del juego que todavía no forman parte de esta funcionalidad.
-- `tests/PokeArena.Tests/`: pruebas de integración que levantan la API y comprueban seguridad, filtros, contrato JSON y paginación.
+- `tests/PokeArena.Tests/`: pruebas de integración que levantan la API (seguridad, filtros, contrato JSON, paginación, creación, validación de imágenes, ciclos de evolución y concurrencia) y pruebas unitarias del caso de uso Crear Carta con dobles de prueba.
 - `compose.yaml`: inicia PostgreSQL local para desarrollo y pruebas.
 - `.gitignore`: evita incluir compilados, cachés y configuraciones locales en Git.
 
@@ -28,6 +28,9 @@ datos y se aplican en este orden:
 1. `20261019180701_InitialCreate`: crea la tabla inicial `cards`.
 2. `20261019183024_ExpandCardForSearch`: agrega código, costo, poder, tipo, rareza e información de habilidades.
 3. `20261019190000_EnableUnaccent`: habilita la búsqueda de texto sin distinguir tildes en PostgreSQL.
+4. `20261021200158_CreateCardMvp`: agrega la llave de idempotencia, la miniatura y la disponibilidad a `cards`, y crea la tabla `abilities` con `HAB-000` (`Sin Habilidad`).
+5. `20261021201439_RemoveLegacyCardFields`: elimina los campos antiguos `SetCode` y `CardNumber`.
+6. `20261021211949_AddAbilityAffectedType`: agrega el tipo afectado por la habilidad a `abilities` y a `cards`.
 
 También debe conservarse `PokeArenaDbContextModelSnapshot.cs`, que Entity Framework
 usa para comparar el modelo actual con futuras migraciones. Los archivos
@@ -65,10 +68,10 @@ Inicie la API:
 ```powershell
 dotnet run `
 	--project src\PokeArena.Api\PokeArena.Api.csproj `
-	--urls "http://localhost:5080"
+	--launch-profile http
 ```
 
-La búsqueda queda disponible en `http://localhost:5080/api/cards` y requiere un
+Con el perfil `http`, la API escucha en `http://localhost:5034`. La búsqueda queda disponible en `http://localhost:5034/api/cards` y requiere un
 JWT válido con el rol `Admin`. El proyecto no genera tokens; deben provenir del
 sistema de identidad configurado para el entorno.
 
@@ -162,7 +165,7 @@ $form = @{
 }
 
 Invoke-RestMethod `
-    -Uri "http://localhost:5080/api/cards" `
+    -Uri "http://localhost:5034/api/cards" `
     -Method Post `
     -Headers @{
         Authorization = "Bearer <jwt-admin>"
@@ -172,6 +175,23 @@ Invoke-RestMethod `
 ```
 
 Si se repite la misma solicitud con el mismo `Idempotency-Key`, la API devuelve
-la carta existente en lugar de crear una segunda (200 en lugar de 201). Si algún
-dato o la imagen no es válido, la API responde 400 con un error en formato
-`application/problem+json`, con los campos `code` y `field`, y la carta no se guarda.
+la carta existente en lugar de crear una segunda (200 en lugar de 201). Si la misma
+llave se usa con datos distintos (nombre, costo, poder, tipo, rareza o habilidad),
+la API responde 409 con `code` `idempotency-key-conflict`. La imagen no se compara
+entre solicitudes. Si algún dato o la imagen no es válido, la API responde 400 con un
+error en formato `application/problem+json`, con los campos `code` y `field`, y la
+carta no se guarda.
+
+Los códigos se generan por tipo con el formato `PKA-<TIPO>-<NNN>`. Para calcular el
+siguiente, la API consulta solo el código más alto del tipo, y los bloqueos de
+PostgreSQL (advisory locks) evitan duplicados cuando dos administradores crean
+cartas del mismo tipo al mismo tiempo.
+
+## Ficha de una carta
+
+`GET /api/cards/{id}` requiere un JWT con rol `Admin` y devuelve la carta con el
+detalle de su habilidad en el objeto `ability` (código, nombre, evento, efecto, tipo
+afectado, si es de evolución y la carta destino). Si la carta no tiene habilidad,
+`ability` es `null`. Muestra también las cartas con imagen `Pendiente` o `Fallida`, para
+que el administrador pueda ver el estado de la imagen. Si el id no existe, responde
+404 con `code` `card-not-found`.

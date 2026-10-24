@@ -16,6 +16,9 @@ public sealed class EfCardRepository(PokeArenaDbContext db) : ICardRepository
     public Task<Card?> FindByIdempotencyKeyAsync(string idempotencyKey, CancellationToken cancellationToken) =>
         db.Cards.AsNoTracking().SingleOrDefaultAsync(card => card.IdempotencyKey == idempotencyKey, cancellationToken);
 
+    public Task<Card?> FindByIdAsync(int id, CancellationToken cancellationToken) =>
+        db.Cards.AsNoTracking().SingleOrDefaultAsync(card => card.Id == id, cancellationToken);
+
     public Task<Ability?> FindAbilityAsync(string code, CancellationToken cancellationToken) =>
         db.Abilities.AsNoTracking().SingleOrDefaultAsync(ability => ability.Code == code, cancellationToken);
 
@@ -60,18 +63,23 @@ public sealed class EfCardRepository(PokeArenaDbContext db) : ICardRepository
 
         public async Task<string> ReserveNextCodeAsync(CancellationToken cancellationToken)
         {
-            var prefix = typePrefix;
-            var codes = await db.Cards
-                .Where(card => card.Code.Contains("-" + prefix + "-"))
+            var prefix = $"PKA-{typePrefix}-";
+
+            // Solo se trae el código más alto del tipo, no todos. Ordenar por longitud primero hace
+            // que PKA-FUE-1000 quede por encima de PKA-FUE-999 aunque el relleno sea de 3 dígitos.
+            var highestCode = await db.Cards
+                .AsNoTracking()
+                .Where(card => card.Code.StartsWith(prefix))
+                .OrderByDescending(card => card.Code.Length)
+                .ThenByDescending(card => card.Code)
                 .Select(card => card.Code)
-                .ToListAsync(cancellationToken);
+                .FirstOrDefaultAsync(cancellationToken);
 
-            var next = codes
-                .Select(code => int.TryParse(code[(code.LastIndexOf('-') + 1)..], out var number) ? number : 0)
-                .DefaultIfEmpty(0)
-                .Max() + 1;
+            var highest = highestCode is not null && int.TryParse(highestCode[prefix.Length..], out var number)
+                ? number
+                : 0;
 
-            return $"PKA-{prefix}-{next:000}";
+            return $"{prefix}{highest + 1:000}";
         }
 
         public async Task<bool> EvolutionCreatesCycleAsync(
