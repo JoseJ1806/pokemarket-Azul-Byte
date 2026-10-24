@@ -1,6 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using PokeArena.Api.Models;
-using PokeArena.Api.Modules.Locations.Domain; // NUEVO
+using PokeArena.Api.Modules.Locations.Domain;
 
 namespace PokeArena.Api.Data;
 

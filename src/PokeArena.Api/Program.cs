@@ -11,6 +11,7 @@ using PokeArena.Api.Models;
 using PokeArena.Api.Modules.Catalog;
 using PokeArena.Api.Modules.Identity;
 using PokeArena.Api.Modules.Images;
+using PokeArena.Api.Modules.Locations;
 
 // ARCHIVO PRINCIPAL DE LA API.
 // Aquí se registra la configuración, autenticación, autorización y PostgreSQL.
@@ -61,6 +62,7 @@ builder.Services.AddDbContext<PokeArenaDbContext>(options =>
 // Cada módulo registra sus puertos, adaptadores y casos de uso.
 builder.Services.AddImagesModule();
 builder.Services.AddCatalogModule();
+builder.Services.AddLocationsModule();
 
 // Construye la aplicación con todos los servicios registrados arriba.
 var app = builder.Build();
