@@ -2,8 +2,13 @@
 
 ## Mapa del proyecto
 
-- `src/PokeArena.Api/Program.cs`: punto de entrada de la API, configuración de servicios, seguridad y endpoint `GET /api/cards`.
-- `src/PokeArena.Api/Models/`: clases que representan los datos del dominio, como `Card`.
+- `src/PokeArena.Api/Program.cs`: punto de entrada de la API, configuración de servicios, seguridad, registro de los módulos y endpoint `GET /api/cards`.
+- `src/PokeArena.Api/Models/`: entidades `Card` y `Ability`, compartidas por la búsqueda y las migraciones.
+- `src/PokeArena.Api/Modules/`: monolito modular con núcleo hexagonal (ADR-001). Cada módulo tiene sus casos de uso, sus puertos y sus adaptadores:
+  - `Catalog/`: módulo Catálogo de Cartas. `Domain/` guarda las reglas y los estados, `Application/` el caso de uso `CreateCardUseCase` y el puerto `ICardRepository` (RepositorioCartas), `Infrastructure/` el adaptador `EfCardRepository` y `Http/` el endpoint `POST /api/cards`.
+  - `Images/`: módulo Imágenes. `ProcessImageUseCase` valida la imagen y genera la versión pequeña con 3 intentos (ADR-002). Sus puertos son `IImageCodec` y `IImageStore` (AlmacenImagenes), implementados con SkiaSharp y el sistema de archivos.
+  - `Identity/`: módulo Identidad y Acceso. Define la política `AdminOnly`.
+- `src/PokeArena.Api/Shared/`: manejo de errores con formato único (`DomainError` y `ProblemResults`).
 - `src/PokeArena.Api/Data/`: `DbContext` y factoría usada por Entity Framework Core para conectarse a PostgreSQL.
 - `src/PokeArena.Api/Migrations/`: cambios versionados del esquema de la base de datos. Los archivos `*.Designer.cs` son generados por EF Core y no se editan manualmente.
 - `src/PokeArena.GameEngine/`: espacio reservado para reglas del juego que todavía no forman parte de esta funcionalidad.
@@ -119,9 +124,12 @@ Para crear una carta, un administrador envía sus datos y una imagen a
 2. Busca la habilidad seleccionada. Si la carta no tiene habilidad, se debe usar
    `HAB-000` (`Sin Habilidad`).
 3. Genera automáticamente un código para la carta, por ejemplo `PKA-AGU-001`.
-4. Guarda la imagen original y crea una miniatura de 200 x 280 píxeles.
-5. Guarda la carta y la marca como disponible solo cuando las dos imágenes se
-   crearon correctamente.
+4. Valida la imagen y genera una miniatura de 200 x 280 píxeles, con hasta 3
+   intentos dentro de la misma solicitud.
+5. Guarda las imágenes y la carta. La carta queda disponible solo si la miniatura
+   se generó (estado de imagen `Lista`). Si fallaron los 3 intentos, se guarda con
+   estado `Fallida` y no disponible, y el administrador lo ve en la respuesta. Si
+   falla el guardado en la base de datos, se borran los archivos.
 
 La petición debe usar `multipart/form-data`, incluir un encabezado
 `Idempotency-Key` único y contener estos campos:
@@ -164,5 +172,6 @@ Invoke-RestMethod `
 ```
 
 Si se repite la misma solicitud con el mismo `Idempotency-Key`, la API devuelve
-la carta existente en lugar de crear una segunda. Si algún dato o la imagen no
-es válido, la API responde con un error y la carta no se guarda.
+la carta existente en lugar de crear una segunda (200 en lugar de 201). Si algún
+dato o la imagen no es válido, la API responde 400 con un error en formato
+`application/problem+json`, con los campos `code` y `field`, y la carta no se guarda.
