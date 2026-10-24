@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using PokeArena.Api.Models;
+using PokeArena.Api.Modules.Locations.Domain; // NUEVO
 
 namespace PokeArena.Api.Data;
 
@@ -13,6 +14,8 @@ public class PokeArenaDbContext(DbContextOptions<PokeArenaDbContext> options)
     public DbSet<Card> Cards => Set<Card>();
 
     public DbSet<Ability> Abilities => Set<Ability>();
+
+    public DbSet<Location> Locations => Set<Location>(); // NUEVO
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -88,6 +91,42 @@ public class PokeArenaDbContext(DbContextOptions<PokeArenaDbContext> options)
             Code = "HAB-000",
             Name = "Sin Habilidad",
             IsEvolution = false
+        });
+
+        // NUEVO: tabla locations (historia Crear ubicación).
+        modelBuilder.Entity<Location>(entity =>
+        {
+            entity.ToTable("locations");
+            entity.HasKey(location => location.Id);
+
+            entity.Property(location => location.Name)
+                .HasMaxLength(LocationRules.MaxNameLength)
+                .IsRequired();
+
+            entity.Property(location => location.Description)
+                .HasMaxLength(LocationRules.MaxDescriptionLength)
+                .IsRequired();
+
+            entity.Property(location => location.ImageUrl).HasMaxLength(2048);
+            entity.Property(location => location.ThumbnailUrl).HasMaxLength(2048);
+
+            entity.Property(location => location.ImageStatus)
+                .HasMaxLength(30)
+                .IsRequired();
+
+            entity.Property(location => location.IdempotencyKey)
+                .HasMaxLength(200)
+                .IsRequired();
+
+            entity.Property(location => location.EnergyMode)
+                .HasMaxLength(20)
+                .IsRequired();
+
+            entity.Property(location => location.EffectType).HasMaxLength(50);
+            entity.Property(location => location.EffectParameters).HasColumnType("jsonb");
+
+            entity.HasIndex(location => location.IdempotencyKey).IsUnique();
+            entity.HasIndex(location => location.Name);
         });
     }
 }
