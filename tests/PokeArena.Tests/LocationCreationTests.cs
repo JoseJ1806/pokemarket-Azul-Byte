@@ -2,6 +2,9 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Text.Json;
 using SkiaSharp;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
+using PokeArena.Api.Data;
 
 namespace PokeArena.Tests;
 
@@ -116,7 +119,28 @@ public class LocationCreationTests
         using var json = JsonDocument.Parse(body);
         Assert.Equal(expectedField, json.RootElement.GetProperty("field").GetString());
     }
+    [Fact]
+    public async Task CreateLocation_ConcurrentRetriesWithSameKey_CreateOnlyOne()
+    {
+        using var client = AdminClient("loc-concurrent-001");
 
+        // Cinco solicitudes idénticas al mismo tiempo, como un reintento de red desordenado.
+        var requests = Enumerable.Range(0, 5).Select(async _ =>
+        {
+            using var content = BuildContent();
+            return await client.PostAsync("/api/locations", content);
+        });
+        var responses = await Task.WhenAll(requests);
+
+        Assert.All(responses, response =>
+            Assert.True(response.StatusCode is HttpStatusCode.Created or HttpStatusCode.OK));
+        Assert.Equal(1, responses.Count(response => response.StatusCode == HttpStatusCode.Created));
+
+        using var scope = factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<PokeArenaDbContext>();
+        Assert.Equal(1, await db.Locations.CountAsync(location => location.IdempotencyKey == "loc-concurrent-001"));
+    }
+    
     [Fact]
     public async Task CreateLocation_WithPortraitImage_IsRejected()
     {
