@@ -416,6 +416,7 @@ app.MapGet("/api/abilities", async (
 
 // Los endpoints de Crear Carta viven en el módulo Catálogo (Modules/Catalog/Http).
 app.MapCatalogEndpoints();
+app.MapLocationsEndpoints();
 
 app.Run();
 
