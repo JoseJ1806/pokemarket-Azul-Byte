@@ -33,3 +33,5 @@ appsettings.*.local.json
 # OS files
 .DS_Store
 Thumbs.db
+
+src/PokeArena.Api/wwwroot/uploads/

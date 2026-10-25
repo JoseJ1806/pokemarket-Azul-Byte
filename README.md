@@ -137,15 +137,15 @@ Para crear una carta, un administrador envía sus datos y una imagen a
 La petición debe usar `multipart/form-data`, incluir un encabezado
 `Idempotency-Key` único y contener estos campos:
 
-| Campo | Qué representa |
-| --- | --- |
-| `Name` | Nombre de la carta |
-| `Cost` | Costo, entre 0 y 10 |
-| `Power` | Poder, entre -20 y 20 |
-| `Type` | `Fuego`, `Agua`, `Planta`, `Eléctrico`, `Psíquico` o `Lucha` |
-| `Rarity` | `Común`, `Poco común`, `Rara` o `Legendaria` |
-| `AbilityCode` | Código de una habilidad existente |
-| `Image` | Imagen PNG, JPG o WebP |
+| Campo         | Qué representa                                               |
+| ------------- | ------------------------------------------------------------ |
+| `Name`        | Nombre de la carta                                           |
+| `Cost`        | Costo, entre 0 y 10                                          |
+| `Power`       | Poder, entre -20 y 20                                        |
+| `Type`        | `Fuego`, `Agua`, `Planta`, `Eléctrico`, `Psíquico` o `Lucha` |
+| `Rarity`      | `Común`, `Poco común`, `Rara` o `Legendaria`                 |
+| `AbilityCode` | Código de una habilidad existente                            |
+| `Image`       | Imagen PNG, JPG o WebP                                       |
 
 La imagen no puede superar 5 MB, debe tener formato vertical 5:7 y una
 resolución mínima de 600 x 840 píxeles. Las habilidades disponibles se pueden
@@ -186,6 +186,26 @@ Los códigos se generan por tipo con el formato `PKA-<TIPO>-<NNN>`. Para calcula
 siguiente, la API consulta solo el código más alto del tipo, y los bloqueos de
 PostgreSQL (advisory locks) evitan duplicados cuando dos administradores crean
 cartas del mismo tipo al mismo tiempo.
+
+## Cómo se crea una ubicación
+
+Un administrador envía `POST /api/locations` con `multipart/form-data` y el
+encabezado `Idempotency-Key`. Campos: `Name`, `Description`, `CardLimit` (0 a 5),
+`EnergyMode` (`Fija` con `EnergyAmount` de 0 a 3, o `PorCartas` con `EnergyAmount`
+de 0 a 2), `EffectType` y `EffectParameters` (opcionales) e `Image`.
+
+La imagen debe ser horizontal 4:3, PNG, JPG o WebP, de máximo 5 MB y mínimo
+800 x 600. Se genera una versión pequeña de 320 x 240, con hasta 3 intentos
+(ADR-002). Tipos de efecto y parámetros:
+
+| `EffectType`          | `EffectParameters`                                                 |
+| --------------------- | ------------------------------------------------------------------ |
+| `BonificacionPorTipo` | `{"tipo":"Fuego","cantidad":3}` (cantidad de -5 a 5)               |
+| `ModificadorDeCosto`  | `{"cantidad":-2,"tipoAfectado":"Agua"}` (tipoAfectado es opcional) |
+| `RestriccionPorTurno` | `{"turnos":[1,2]}` (turnos del 1 al 6, sin repetir)                |
+
+Responde 201 al crear y 200 si la misma `Idempotency-Key` ya la había creado. Los
+errores usan `application/problem+json` con `code` y `field`.
 
 ## Ficha de una carta
 
