@@ -4,7 +4,7 @@ using PokeArena.Api.Modules.Locations.Infrastructure;
 
 namespace PokeArena.Api.Modules.Locations;
 
-// Registro del módulo Ubicaciones. Más adelante se agregan el repositorio, el caso de uso y los endpoints.
+// Registro del módulo Ubicaciones. Más adelante se agregan los endpoints HTTP.
 public static class LocationsModule
 {
     public static IServiceCollection AddLocationsModule(this IServiceCollection services)
@@ -14,6 +14,9 @@ public static class LocationsModule
         services.AddSingleton<ILocationEffectType, CostModifierEffect>();
         services.AddSingleton<ILocationEffectType, TurnRestrictionEffect>();
         services.AddSingleton<LocationEffectCatalog>();
+
+        services.AddScoped<ILocationRepository, EfLocationRepository>();
+        services.AddScoped<CreateLocationUseCase>();
         return services;
     }
 }
