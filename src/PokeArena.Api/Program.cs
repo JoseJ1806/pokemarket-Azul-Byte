@@ -12,6 +12,7 @@ using PokeArena.Api.Modules.Catalog;
 using PokeArena.Api.Modules.Identity;
 using PokeArena.Api.Modules.Images;
 using PokeArena.Api.Modules.Locations;
+using PokeArena.Api.Modules.Catalog.Domain;
 
 // ARCHIVO PRINCIPAL DE LA API.
 // Aquí se registra la configuración, autenticación, autorización y PostgreSQL.
@@ -143,6 +144,46 @@ app.MapGet("/api/cards", async (
         }
     }
 
+    // VALIDACIÓN DE FILTROS.
+    // Se hace ANTES de tocar la base de datos: un filtro inválido se rechaza sin gastar
+    // una consulta. Los rangos vienen de CardRules, la misma fuente que usa Crear carta.
+    // El formato del error se mantiene igual que el resto de esta búsqueda.
+
+    // Costo: exacto o límites del rango, todos entre MinCost y MaxCost.
+    if (cost.HasValue && !CardRules.IsValidCost(cost.Value))
+        return Results.BadRequest(new { error = $"cost debe estar entre {CardRules.MinCost} y {CardRules.MaxCost}." });
+    if (minCost.HasValue && !CardRules.IsValidCost(minCost.Value))
+        return Results.BadRequest(new { error = $"minCost debe estar entre {CardRules.MinCost} y {CardRules.MaxCost}." });
+    if (maxCost.HasValue && !CardRules.IsValidCost(maxCost.Value))
+        return Results.BadRequest(new { error = $"maxCost debe estar entre {CardRules.MinCost} y {CardRules.MaxCost}." });
+
+    // Poder: mismo patrón, con el rango -20 a 20 (negativos incluidos).
+    if (power.HasValue && !CardRules.IsValidPower(power.Value))
+        return Results.BadRequest(new { error = $"power debe estar entre {CardRules.MinPower} y {CardRules.MaxPower}." });
+    if (minPower.HasValue && !CardRules.IsValidPower(minPower.Value))
+        return Results.BadRequest(new { error = $"minPower debe estar entre {CardRules.MinPower} y {CardRules.MaxPower}." });
+    if (maxPower.HasValue && !CardRules.IsValidPower(maxPower.Value))
+        return Results.BadRequest(new { error = $"maxPower debe estar entre {CardRules.MinPower} y {CardRules.MaxPower}." });
+
+    // Un rango con el mínimo mayor que el máximo no puede dar resultados coherentes.
+    if (minCost.HasValue && maxCost.HasValue && minCost > maxCost)
+        return Results.BadRequest(new { error = "minCost no puede ser mayor que maxCost." });
+    if (minPower.HasValue && maxPower.HasValue && minPower > maxPower)
+        return Results.BadRequest(new { error = "minPower no puede ser mayor que maxPower." });
+
+    // Tipo y rareza: si se envían, deben existir. Antes un tipo inexistente devolvía
+    // una lista vacía, y la user story pide rechazarlo indicando el criterio.
+    if (!string.IsNullOrWhiteSpace(type) && !IsKnownValue(type, CardRules.TypePrefixes.Keys))
+        return Results.BadRequest(new
+        {
+            error = $"type no es válido. Valores permitidos: {string.Join(", ", CardRules.TypePrefixes.Keys)}."
+        });
+    if (!string.IsNullOrWhiteSpace(rarity) && !IsKnownValue(rarity, CardRules.Rarities))
+        return Results.BadRequest(new
+        {
+            error = $"rarity no es válida. Valores permitidos: {string.Join(", ", CardRules.Rarities)}."
+        });
+
     // El límite fija el conjunto inicial: cartas creadas después no alteran el recorrido.
     // En la primera petición se toma el mayor Id actual; las siguientes reutilizan
     // ese límite para que una carta nueva no aparezca a mitad del recorrido.
@@ -150,80 +191,6 @@ app.MapGet("/api/cards", async (
         .Select(card => (int?)card.Id)
         .MaxAsync(cancellationToken) ?? 0;
 
-// Costo es un entero con rango de negocio de 0 a 10.
-if (cost.HasValue && (cost < 0 || cost > 10))
-{
-    return Results.BadRequest(new
-    {
-        error = "cost debe estar entre 0 y 10."
-    });
-}
-
-// El límite inferior usa las mismas reglas que el costo exacto.
-if (minCost.HasValue && (minCost < 0 || minCost > 10))
-{
-    return Results.BadRequest(new
-    {
-        error = "minCost debe estar entre 0 y 10."
-    });
-}
-
-// El límite superior también se valida antes de consultar la base.
-if (maxCost.HasValue && (maxCost < 0 || maxCost > 10))
-{
-    return Results.BadRequest(new
-    {
-        error = "maxCost debe estar entre 0 y 10."
-    });
-}
-
-// Poder debe ser no negativo y múltiplo de diez.
-if (power.HasValue && (power < 0 || power % 10 != 0))
-{
-    return Results.BadRequest(new
-    {
-        error = "power debe ser un múltiplo de 10 no negativo."
-    });
-}
-
-// Valida el límite mínimo de poder antes de construir el filtro SQL.
-if (minPower.HasValue && (minPower < 0 || minPower % 10 != 0))
-{
-    return Results.BadRequest(new
-    {
-        error = "minPower debe ser un múltiplo de 10 no negativo."
-    });
-}
-
-// Valida el límite máximo de poder antes de construir el filtro SQL.
-if (maxPower.HasValue && (maxPower < 0 || maxPower % 10 != 0))
-{
-    return Results.BadRequest(new
-    {
-        error = "maxPower debe ser un múltiplo de 10 no negativo."
-    });
-}
-
-
-
-
-    // Un intervalo invertido no puede devolver resultados coherentes.
-    if (minCost.HasValue && maxCost.HasValue && minCost > maxCost)
-    {
-        return Results.BadRequest(new
-        {
-            error = "minCost no puede ser mayor que maxCost."
-        });
-    }
-
-    // La misma regla se aplica al intervalo de poder.
-    if (minPower.HasValue && maxPower.HasValue && minPower > maxPower)
-    {
-        return Results.BadRequest(new
-        {
-            error = "minPower no puede ser mayor que maxPower."
-        });
-    }
 
     // AsNoTracking indica que solo se leerán cartas; EF no necesita preparar cambios.
     // La consulta permanece en PostgreSQL; no se carga el catálogo completo en memoria.
@@ -431,6 +398,16 @@ static string Normalize(string value) => value.Normalize(NormalizationForm.FormD
     .Aggregate(new StringBuilder(), (builder, character) => builder.Append(character))
     .ToString()
     .Normalize(NormalizationForm.FormC);
+
+// Indica si 'valor' coincide con alguno de los valores válidos, sin distinguir
+// mayúsculas ni tildes. Usa Normalize para que "electrico" y "Eléctrico" cuenten
+// como lo mismo, igual que ya hace el filtro de la consulta SQL.
+static bool IsKnownValue(string valor, IEnumerable<string> valoresValidos)
+{
+    var normalizado = Normalize(valor.Trim());
+    return valoresValidos.Any(valido =>
+        Normalize(valido).Equals(normalizado, StringComparison.OrdinalIgnoreCase));
+}
 
 // Lee el cursor que la API devolvió en una respuesta anterior.
 static byte[] Base64UrlDecode(string value) => Convert.FromBase64String(
