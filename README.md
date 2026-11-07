@@ -162,6 +162,9 @@ dotnet user-secrets set "Authentication:Google:ClientId" "<client-id>"
 VITE_GOOGLE_CLIENT_ID=<client-id>
 ```
 
+Paso a paso para configurarlo en cada equipo, con solución de errores comunes:
+[docs/configurar-inicio-sesion-google.md](docs/configurar-inicio-sesion-google.md).
+
 Sin Client ID la API arranca igual y el inicio de sesión responde 503 explicando
 qué falta. Las pruebas automáticas no lo necesitan, porque reemplazan a Google por
 un proveedor falso.
