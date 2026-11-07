@@ -11,9 +11,14 @@ const base64url = (objeto) =>
 
 const ahora = Math.floor(Date.now() / 1000);
 const encabezado = { alg: "HS256", typ: "JWT" };
+// Desde el Sprint 2 la API exige emisor (iss) y audiencia (aud) en todo token.
+// Deben coincidir con Jwt:Issuer y Jwt:Audience de appsettings.json. Si no vienen,
+// la API responde 401 aunque la firma sea correcta.
 const contenido = {
   sub: "admin-dev",
   role: "Admin",
+  iss: process.env.Jwt__Issuer ?? "pokearena",
+  aud: process.env.Jwt__Audience ?? "pokearena-api",
   iat: ahora,
   exp: ahora + 60 * 60 * 8,
 };

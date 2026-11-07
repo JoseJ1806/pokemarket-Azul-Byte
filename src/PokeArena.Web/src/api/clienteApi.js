@@ -4,6 +4,14 @@ export function guardarToken(token) {
   localStorage.setItem(CLAVE_TOKEN, token);
 }
 
+// Agregada en el Sprint 2 para el botón "Salir" de IniciarSesion.vue.
+// Solo olvida el token en ESTE navegador. El token sigue siendo válido hasta que
+// expire (15 minutos). Invalidarlo en el servidor es parte de la US de Renovación y
+// cierre de sesión, que todavía no se implementa.
+export function borrarToken() {
+  localStorage.removeItem(CLAVE_TOKEN);
+}
+
 // Mensajes comprensibles para los códigos que la API o el proxy devuelven sin
 // explicación en el cuerpo. Solo se usan cuando la respuesta no trae un texto
 // propio: si la API explica el problema, ese texto manda.

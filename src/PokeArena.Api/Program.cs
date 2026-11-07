@@ -2,10 +2,8 @@ using System.Text;
 using System.Text.Json;
 using System.Globalization;
 using System.Data;
-using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.IdentityModel.Tokens;
 using PokeArena.Api.Data;
 using PokeArena.Api.Models;
 using PokeArena.Api.Modules.Catalog;
@@ -15,7 +13,8 @@ using PokeArena.Api.Modules.Locations;
 using PokeArena.Api.Modules.Catalog.Domain;
 
 // ARCHIVO PRINCIPAL DE LA API.
-// Aquí se registra la configuración, autenticación, autorización y PostgreSQL.
+// Aquí se registra la configuración, PostgreSQL y los módulos. La autenticación y la
+// autorización viven desde el Sprint 2 en el módulo Identidad (IdentityModule).
 // También se define GET /api/cards, que recibe filtros HTTP, consulta Card mediante
 // PokeArenaDbContext y devuelve el JSON que consume el cliente de PokeArena.
 // Crea el constructor de la aplicación y carga appsettings, variables de entorno
@@ -25,35 +24,11 @@ var builder = WebApplication.CreateBuilder(args);
 // Registra la documentación OpenAPI disponible durante el desarrollo.
 builder.Services.AddOpenApi();
 
-// La clave se obtiene de configuración segura; no se guarda en el código fuente.
-var signingKey = builder.Configuration["Jwt:SigningKey"];
-// Si no existe la clave, la API no inicia porque no podría validar tokens confiables.
-if (string.IsNullOrWhiteSpace(signingKey))
-    throw new InvalidOperationException("Jwt:SigningKey debe configurarse mediante secretos o variables de entorno.");
-
-builder.Services
-    // Indica que las peticiones usan el esquema estándar Authorization: Bearer.
-    .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
-    .AddJwtBearer(options =>
-    {
-        // Define qué debe comprobarse antes de considerar válido un JWT.
-        options.TokenValidationParameters = new TokenValidationParameters
-        {
-            // El token debe estar firmado con la clave configurada.
-            ValidateIssuerSigningKey = true,
-            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(signingKey)),
-            // Si se configuran emisor y audiencia, también se validan.
-            ValidateIssuer = !string.IsNullOrWhiteSpace(builder.Configuration["Jwt:Issuer"]),
-            ValidIssuer = builder.Configuration["Jwt:Issuer"],
-            ValidateAudience = !string.IsNullOrWhiteSpace(builder.Configuration["Jwt:Audience"]),
-            ValidAudience = builder.Configuration["Jwt:Audience"],
-            // Los tokens vencidos se rechazan y solo se tolera un minuto de diferencia.
-            ValidateLifetime = true,
-            ClockSkew = TimeSpan.FromMinutes(1)
-        };
-    });
-// La política AdminOnly vive en el módulo Identidad y Acceso.
-builder.Services.AddAdminAuthorization();
+// MÓDULO IDENTIDAD Y ACCESO (Sprint 2).
+// Antes aquí estaba la validación de JWT y la política AdminOnly. Se movieron a
+// Modules/Identity/IdentityModule.cs, que ahora también registra el inicio de sesión
+// con Google. Ahí se explica cada paso.
+builder.Services.AddIdentityModule(builder.Configuration);
 
 // Conecta la API con PostgreSQL y permite inyectar el DbContext en los endpoints.
 builder.Services.AddDbContext<PokeArenaDbContext>(options =>
@@ -384,6 +359,8 @@ app.MapGet("/api/abilities", async (
 // Los endpoints de Crear Carta viven en el módulo Catálogo (Modules/Catalog/Http).
 app.MapCatalogEndpoints();
 app.MapLocationsEndpoints();
+// POST /api/auth/google y GET /api/me (Sprint 2, Inicio de sesión con proveedor).
+app.MapIdentityEndpoints();
 
 app.Run();
 

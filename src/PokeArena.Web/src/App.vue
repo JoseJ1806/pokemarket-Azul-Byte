@@ -4,6 +4,7 @@ import { guardarToken, obtenerToken } from "./api/clienteApi.js";
 import BuscarCartas from "./components/BuscarCartas.vue";
 import CrearCarta from "./components/CrearCarta.vue";
 import CrearUbicacion from "./components/CrearUbicacion.vue";
+import IniciarSesion from "./components/IniciarSesion.vue";
 
 // Las pantallas disponibles. 'id' identifica la pantalla en el código y 'etiqueta'
 // es el texto de su pestaña. Agregar una pantalla nueva empieza por sumar una línea aquí.
@@ -36,10 +37,27 @@ function aplicarToken() {
   versionToken.value++;
   aviso.value = `Token guardado a las ${new Date().toLocaleTimeString()}.`;
 }
+
+// Sprint 2: IniciarSesion.vue avisa cuando un jugador entra o sale con Google.
+// En los dos casos el token guardado cambió, así que se refleja en el cuadro de token
+// de desarrollo y se sube versionToken para que las demás pantallas se enteren.
+function alCambiarSesion() {
+  token.value = obtenerToken();
+  versionToken.value++;
+}
 </script>
 
 <template>
   <h1>PokéArena</h1>
+
+  <!-- Sprint 2: inicio de sesión con Google para jugadores. El cuadro de token de
+       desarrollo de abajo se mantiene para los administradores, que todavía no
+       tienen forma de entrar con Google. -->
+  <IniciarSesion
+    :version-token="versionToken"
+    @sesion-iniciada="alCambiarSesion"
+    @sesion-cerrada="alCambiarSesion"
+  />
 
   <details class="tarjeta">
     <summary>Token de desarrollo</summary>

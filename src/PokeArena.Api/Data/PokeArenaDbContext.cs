@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using PokeArena.Api.Models;
+using PokeArena.Api.Modules.Identity.Domain;
 using PokeArena.Api.Modules.Locations.Domain;
 
 namespace PokeArena.Api.Data;
@@ -16,6 +17,10 @@ public class PokeArenaDbContext(DbContextOptions<PokeArenaDbContext> options)
     public DbSet<Ability> Abilities => Set<Ability>();
 
     public DbSet<Location> Locations => Set<Location>(); // NUEVO
+
+    // Sprint 2: cuentas de jugador creadas al iniciar sesión con Google.
+    // Representa la tabla player_accounts (configurada al final de OnModelCreating).
+    public DbSet<PlayerAccount> PlayerAccounts => Set<PlayerAccount>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -127,6 +132,43 @@ public class PokeArenaDbContext(DbContextOptions<PokeArenaDbContext> options)
 
             entity.HasIndex(location => location.IdempotencyKey).IsUnique();
             entity.HasIndex(location => location.Name);
+        });
+
+        // SPRINT 2: tabla player_accounts (US Inicio de sesión con proveedor).
+        // Cada fila es una cuenta de jugador. Las reglas de creación están en
+        // PlayerAccount.CreatePlayer y el acceso en EfPlayerAccountRepository.
+        modelBuilder.Entity<PlayerAccount>(entity =>
+        {
+            entity.ToTable("player_accounts");
+            entity.HasKey(account => account.Id);
+
+            // El Guid lo genera la aplicación (Guid versión 7), no la base de datos.
+            entity.Property(account => account.Id).ValueGeneratedNever();
+
+            entity.Property(account => account.Provider)
+                .HasMaxLength(50)
+                .IsRequired();
+
+            // Google documenta que "sub" tiene como máximo 255 caracteres.
+            entity.Property(account => account.ProviderSubject)
+                .HasMaxLength(255)
+                .IsRequired();
+
+            // 320 es el largo máximo de un correo según el estándar.
+            entity.Property(account => account.Email)
+                .HasMaxLength(320)
+                .IsRequired();
+
+            entity.Property(account => account.Role)
+                .HasMaxLength(20)
+                .IsRequired();
+
+            // ÍNDICE ÚNICO: una persona de un proveedor tiene como máximo UNA cuenta.
+            // Es lo que hace imposible duplicar cuentas con ingresos simultáneos, aunque
+            // lleguen a instancias distintas de la API. Fíjese que NO incluye el correo:
+            // la identidad es el proveedor más su identificador permanente.
+            entity.HasIndex(account => new { account.Provider, account.ProviderSubject })
+                .IsUnique();
         });
     }
 }
