@@ -21,6 +21,24 @@ namespace PokeArena.Tests;
 // Arrange (preparar), Act (ejecutar) y Assert (comprobar).
 public class SignInWithProviderUseCaseTests
 {
+
+    // CONTRATO: el resultado de la entrega llega tal cual hasta quien llamó al login. Es lo
+    // que le permite al frontend decidir si muestra la bienvenida o el aviso.
+    [Theory]
+    [InlineData(InitialCollectionOutcome.Granted)]
+    [InlineData(InitialCollectionOutcome.AlreadyGranted)]
+    [InlineData(InitialCollectionOutcome.NotAvailable)]
+    public async Task SignIn_ReportsTheOutcomeOfTheInitialCollection(InitialCollectionOutcome outcome)
+    {
+        var context = new TestContext(FakeIdentityProvider.Returning(Ash));
+        context.Collection.Outcome = outcome;
+
+        var result = await context.UseCase.ExecuteAsync("token", CancellationToken.None);
+
+        Assert.Null(result.Error);
+        Assert.Equal(outcome, result.InitialCollection!.Value);
+    }
+
     // Identidad de ejemplo, como si Google ya hubiera validado el token.
     private static readonly ExternalIdentity Ash = new("Google", "google-sub-ash", "ash@pallet.com");
 
@@ -120,6 +138,9 @@ public class SignInWithProviderUseCaseTests
         Assert.Equal(DomainErrorKind.Validation, result.Error!.Kind);
         Assert.Equal("idToken", result.Error.Field);
         Assert.Equal(0, provider.Calls);
+
+        // Un ingreso rechazado no intentó ninguna entrega: no hay resultado.
+        Assert.Null(result.InitialCollection);
     }
 
     // La colección inicial se pide en CADA ingreso (la US de colección necesita poder
@@ -146,6 +167,9 @@ public class SignInWithProviderUseCaseTests
 
         Assert.Null(result.Error);
         Assert.NotNull(result.AccessToken);
+
+        // Si la entrega falla, el jugador ve el aviso de "no disponible".
+        Assert.Equal(InitialCollectionOutcome.NotAvailable, result.InitialCollection!.Value);
     }
 
     // CRITERIO ALTERNO: dos ingresos simultáneos de una identidad nueva crean una sola
@@ -244,18 +268,22 @@ public class SignInWithProviderUseCaseTests
         }
     }
 
-    // DOBLE: anota a quién se le pidió la colección y puede fallar a propósito.
+    // DOBLE: anota a quién se le pidió la colección, devuelve el resultado que se le diga
+    // y puede fallar a propósito.
     private sealed class RecordingCollectionGranter : IInitialCollectionGranter
     {
         public List<Guid> PlayersGranted { get; } = [];
         public Exception? FailWith { get; set; }
 
-        public Task GrantIfMissingAsync(Guid playerId, CancellationToken cancellationToken)
+        // Lo que responde el doble. Por defecto, una entrega exitosa.
+        public InitialCollectionOutcome Outcome { get; set; } = InitialCollectionOutcome.Granted;
+
+        public Task<InitialCollectionOutcome> GrantIfMissingAsync(Guid playerId, CancellationToken cancellationToken)
         {
             if (FailWith is not null)
                 throw FailWith;
             PlayersGranted.Add(playerId);
-            return Task.CompletedTask;
+            return Task.FromResult(Outcome);
         }
     }
 

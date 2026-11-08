@@ -44,6 +44,8 @@ public class SignInEndpointTests(AuthApiFactory factory)
         var body = await ReadJsonAsync(response);
         Assert.False(string.IsNullOrWhiteSpace(body.GetProperty("accessToken").GetString()));
         Assert.True(body.GetProperty("isNewAccount").GetBoolean());
+        // Mientras el módulo de colección no exista, el puerto responde NotAvailable.
+        Assert.Equal("NotAvailable", body.GetProperty("initialCollection").GetString());
         Assert.Equal(IdentityRoles.Player, body.GetProperty("player").GetProperty("role").GetString());
         Assert.Equal(0, body.GetProperty("player").GetProperty("elo").GetInt32());
 

@@ -66,7 +66,9 @@ public static class AuthEndpoints
             result.AccessToken!.Value,
             result.AccessToken.ExpiresAt,
             PlayerResponse.From(result.Account!),
-            result.IsNewAccount));
+            result.IsNewAccount,
+            // ToString() convierte el enum en su nombre ("Granted"...).
+            result.InitialCollection!.Value.ToString()));
     }
 
     // GET /api/me

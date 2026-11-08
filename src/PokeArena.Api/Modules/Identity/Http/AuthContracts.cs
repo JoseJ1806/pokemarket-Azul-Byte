@@ -20,11 +20,15 @@ public sealed record SignInWithGoogleRequest(string? IdToken);
 // ExpiresAt:    cuándo vence (15 minutos después de emitida).
 // Player:       datos públicos de la cuenta.
 // IsNewAccount: true en el primer ingreso, para mostrar la bienvenida.
+// InitialCollection: qué pasó con la colección inicial en este ingreso. Viaja como TEXTO
+//                 ("Granted", "AlreadyGranted" o "NotAvailable") y no como número, para
+//                 que el frontend sea legible y no dependa del orden del enum.
 public sealed record SignInResponse(
     string AccessToken,
     DateTimeOffset ExpiresAt,
     PlayerResponse Player,
-    bool IsNewAccount);
+    bool IsNewAccount,
+    string InitialCollection);
 
 // Datos de la cuenta que se pueden mostrar al propio jugador.
 // La usan POST /api/auth/google y GET /api/me.

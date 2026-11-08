@@ -11,16 +11,25 @@ namespace PokeArena.Api.Modules.Identity.Application;
 // IsNewAccount: true si este fue el primer ingreso. El frontend lo usa para mostrar la
 //               bienvenida con la colección inicial.
 // Error:        el motivo del rechazo, si lo hubo.
+// InitialCollection: qué pasó con la entrega de la colección inicial en ESTE ingreso.
+//               El frontend lo usa para decidir qué mostrar: la bienvenida con las cartas,
+//               nada, o el aviso de "juego no disponible". Es null cuando el ingreso fue
+//               rechazado, porque entonces ni siquiera se intentó la entrega.
 public sealed record SignInResult(
     PlayerAccount? Account,
     AccessToken? AccessToken,
     bool IsNewAccount,
+    InitialCollectionOutcome? InitialCollection,
     DomainError? Error)
 {
-    public static SignInResult Succeeded(PlayerAccount account, AccessToken token, bool isNewAccount) =>
-        new(account, token, isNewAccount, null);
+    public static SignInResult Succeeded(
+        PlayerAccount account,
+        AccessToken token,
+        bool isNewAccount,
+        InitialCollectionOutcome initialCollection) =>
+        new(account, token, isNewAccount, initialCollection, null);
 
-    public static SignInResult Failed(DomainError error) => new(null, null, false, error);
+    public static SignInResult Failed(DomainError error) => new(null, null, false, null, error);
 }
 
 // CASO DE USO: INICIAR SESIÓN CON UN PROVEEDOR EXTERNO (módulo Identidad y Acceso).
@@ -105,9 +114,13 @@ public sealed class SignInWithProviderUseCase(
         // PASO 5. Pedir la colección inicial en CADA ingreso (ver IInitialCollectionGranter
         // para el porqué). Si falla, el jugador igual puede entrar: se registra el error y
         // la entrega se reintenta en el siguiente ingreso, como pide la US de colección.
+        //
+        // Si falla, el resultado que se reporta es NotAvailable: para el jugador es lo mismo que
+        // "todavía no se puede entregar", y el detalle del error queda solo en el log.
+        var initialCollection = InitialCollectionOutcome.NotAvailable;
         try
         {
-            await collection.GrantIfMissingAsync(account.Id, cancellationToken);
+            initialCollection = await collection.GrantIfMissingAsync(account.Id, cancellationToken);
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
         {
@@ -121,6 +134,6 @@ public sealed class SignInWithProviderUseCase(
 
         // PASO 6. Emitir la credencial propia (JWT de PokéArena con expiración corta).
         var accessToken = tokens.Issue(account);
-        return SignInResult.Succeeded(account, accessToken, isNewAccount);
+        return SignInResult.Succeeded(account, accessToken, isNewAccount, initialCollection);
     }
 }
