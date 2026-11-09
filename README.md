@@ -137,7 +137,7 @@ diagrama de secuencia de la wiki V5.
    existe, la crea con rol `Player` y Elo 0. Dos ingresos simultáneos de una persona
    nueva crean una sola cuenta gracias al índice único de `player_accounts`.
 5. Pide la colección inicial al módulo de colección (por ahora no hace nada).
-6. Responde 200 con accessToken, expiresAt, player, isNewAccount e initialCollection..
+6. Responde 200 con accessToken, expiresAt, player, isNewAccount e initialCollection.
 
 Errores: 400 si falta `idToken`, 401 si el token de Google no es válido y 503 si
 Google no responde o si falta configurar el Client ID. Todos usan

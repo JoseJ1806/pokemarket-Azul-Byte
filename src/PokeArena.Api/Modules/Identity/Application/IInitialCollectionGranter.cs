@@ -32,9 +32,7 @@ public enum InitialCollectionOutcome
 // jugador ya tiene su colección, no hace nada y responde AlreadyGranted.
 //
 // Quién lo implementa:
-// 1. Hoy, NoOpInitialCollectionGranter (no entrega nada y responde NotAvailable).
-// 2. Cuando exista el módulo de colección, su propia clase. Solo hay que cambiar una
-//    línea de registro en IdentityModule.
+// Lo implementa el módulo Colección con GrantInitialCollectionUseCase, que se registra`r`n// en AddCollectionModule. Identidad solo conoce esta interfaz.
 public interface IInitialCollectionGranter
 {
     // Entrega la colección inicial al jugador si todavía no la recibió, y dice qué pasó.

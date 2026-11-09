@@ -34,4 +34,6 @@ appsettings.*.local.json
 .DS_Store
 Thumbs.db
 
+
+# Imagenes generadas al crear cartas y ubicaciones en desarrollo
 src/PokeArena.Api/wwwroot/uploads/
