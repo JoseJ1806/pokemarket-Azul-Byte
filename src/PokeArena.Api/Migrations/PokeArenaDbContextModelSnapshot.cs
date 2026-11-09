@@ -150,6 +150,99 @@ namespace PokeArena.Api.Migrations
                     b.ToTable("cards", (string)null);
                 });
 
+            modelBuilder.Entity("PokeArena.Api.Modules.Collection.Domain.CardCopy", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTimeOffset>("AcquiredAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("CardId")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Origin")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<Guid>("PlayerId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PlayerId", "CardId");
+
+                    b.ToTable("card_copies", (string)null);
+                });
+
+            modelBuilder.Entity("PokeArena.Api.Modules.Collection.Domain.CubeBalance", b =>
+                {
+                    b.Property<Guid>("PlayerId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Balance")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("PlayerId");
+
+                    b.ToTable("cube_balances", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_cube_balances_Balance_NotNegative", "\"Balance\" >= 0");
+                        });
+                });
+
+            modelBuilder.Entity("PokeArena.Api.Modules.Collection.Domain.CubeMovement", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<int>("Amount")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("PlayerId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Reason")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PlayerId", "Id");
+
+                    b.ToTable("cube_movements", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_cube_movements_Amount_NotZero", "\"Amount\" <> 0");
+                        });
+                });
+
+            modelBuilder.Entity("PokeArena.Api.Modules.Collection.Domain.InitialDelivery", b =>
+                {
+                    b.Property<Guid>("PlayerId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("DeliveredAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("PlayerId");
+
+                    b.ToTable("initial_deliveries", (string)null);
+                });
+
             modelBuilder.Entity("PokeArena.Api.Modules.Identity.Domain.PlayerAccount", b =>
                 {
                     b.Property<Guid>("Id")

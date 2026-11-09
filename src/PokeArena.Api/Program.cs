@@ -11,6 +11,7 @@ using PokeArena.Api.Modules.Identity;
 using PokeArena.Api.Modules.Images;
 using PokeArena.Api.Modules.Locations;
 using PokeArena.Api.Modules.Catalog.Domain;
+using PokeArena.Api.Modules.Collection;  
 
 // ARCHIVO PRINCIPAL DE LA API.
 // Aquí se registra la configuración, PostgreSQL y los módulos. La autenticación y la
@@ -39,6 +40,7 @@ builder.Services.AddDbContext<PokeArenaDbContext>(options =>
 builder.Services.AddImagesModule();
 builder.Services.AddCatalogModule();
 builder.Services.AddLocationsModule();
+builder.Services.AddCollectionModule(); 
 
 // Construye la aplicación con todos los servicios registrados arriba.
 var app = builder.Build();
@@ -361,6 +363,7 @@ app.MapCatalogEndpoints();
 app.MapLocationsEndpoints();
 // POST /api/auth/google y GET /api/me (Sprint 2, Inicio de sesión con proveedor).
 app.MapIdentityEndpoints();
+app.MapCollectionEndpoints();
 
 app.Run();
 

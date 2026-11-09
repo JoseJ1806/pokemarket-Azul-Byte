@@ -11,6 +11,8 @@ public static class CatalogModule
     public static IServiceCollection AddCatalogModule(this IServiceCollection services)
     {
         services.AddScoped<ICardRepository, EfCardRepository>();
+        // Interfaz pública de consulta: la usan otros módulos (hoy, Colección).
+        services.AddScoped<ICardCatalogQuery, EfCardCatalogQuery>();
         services.AddScoped<CreateCardUseCase>();
         services.AddScoped<GetCardUseCase>();
         return services;

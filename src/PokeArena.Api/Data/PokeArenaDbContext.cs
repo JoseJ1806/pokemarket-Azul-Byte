@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using PokeArena.Api.Models;
+using PokeArena.Api.Modules.Collection.Domain;
 using PokeArena.Api.Modules.Identity.Domain;
 using PokeArena.Api.Modules.Locations.Domain;
 
@@ -21,6 +22,16 @@ public class PokeArenaDbContext(DbContextOptions<PokeArenaDbContext> options)
     // Sprint 2: cuentas de jugador creadas al iniciar sesión con Google.
     // Representa la tabla player_accounts (configurada al final de OnModelCreating).
     public DbSet<PlayerAccount> PlayerAccounts => Set<PlayerAccount>();
+
+    // Sprint 2: colección inicial del jugador (módulo Colección). Cada DbSet representa una
+    // tabla configurada al final de OnModelCreating.
+    public DbSet<CardCopy> CardCopies => Set<CardCopy>();
+
+    public DbSet<InitialDelivery> InitialDeliveries => Set<InitialDelivery>();
+
+    public DbSet<CubeMovement> CubeMovements => Set<CubeMovement>();
+
+    public DbSet<CubeBalance> CubeBalances => Set<CubeBalance>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -169,6 +180,78 @@ public class PokeArenaDbContext(DbContextOptions<PokeArenaDbContext> options)
             // la identidad es el proveedor más su identificador permanente.
             entity.HasIndex(account => new { account.Provider, account.ProviderSubject })
                 .IsUnique();
+        });
+
+        // ---------------------------------------------------------------------------
+        // MÓDULO COLECCIÓN (Sprint 2, US Recibir colección inicial).
+        //
+        // Decisiones de diseño (ver ADR-004):
+        // - Una fila por copia de carta (decisión D).
+        // - SIN llaves foráneas hacia player_accounts ni cards: los módulos Identidad y
+        //   Catálogo no quedan atados a Colección a nivel de base de datos (decisiones G y 5).
+        // - Origen y motivo se guardan como TEXTO, no como número.
+        // - Los movimientos de cubos son la verdad del saldo, y el saldo se guarda aparte,
+        //   en la misma transacción (decisión E).
+        // ---------------------------------------------------------------------------
+
+        // initial_deliveries: una fila por jugador que ya recibió su entrega inicial. Su clave
+        // primaria es la BARRERA de "exactamente una vez": la base de datos es incapaz de
+        // guardar dos entregas del mismo jugador (decisión B).
+        modelBuilder.Entity<InitialDelivery>(entity =>
+        {
+            entity.ToTable("initial_deliveries");
+            entity.HasKey(delivery => delivery.PlayerId);
+
+            // El Guid lo asigna la aplicación (es el Id de la cuenta), no la base de datos.
+            entity.Property(delivery => delivery.PlayerId).ValueGeneratedNever();
+        });
+
+        // card_copies: una fila por cada copia de carta de un jugador.
+        modelBuilder.Entity<CardCopy>(entity =>
+        {
+            entity.ToTable("card_copies");
+            entity.HasKey(copy => copy.Id);
+
+            // Se guarda el nombre del valor ("Initial"), no su número.
+            entity.Property(copy => copy.Origin)
+                .HasConversion<string>()
+                .HasMaxLength(20)
+                .IsRequired();
+
+            // ÍNDICE COMPUESTO (no único: un jugador puede tener varias copias de una carta).
+            // Acelera la consulta más frecuente: "las cartas de este jugador, agrupadas por
+            // carta con su cantidad de copias".
+            entity.HasIndex(copy => new { copy.PlayerId, copy.CardId });
+        });
+
+        // cube_movements: el historial de cubos. SOLO se agregan filas, nunca se editan.
+        modelBuilder.Entity<CubeMovement>(entity =>
+        {
+            // RESTRICCIÓN: un movimiento de cero cubos no tiene sentido.
+            entity.ToTable("cube_movements", table =>
+                table.HasCheckConstraint("CK_cube_movements_Amount_NotZero", "\"Amount\" <> 0"));
+            entity.HasKey(movement => movement.Id);
+
+            entity.Property(movement => movement.Reason)
+                .HasConversion<string>()
+                .HasMaxLength(30)
+                .IsRequired();
+
+            // Acelera "el historial de este jugador".
+            entity.HasIndex(movement => new { movement.PlayerId, movement.Id });
+        });
+
+        // cube_balances: el saldo actual, una fila por jugador.
+        modelBuilder.Entity<CubeBalance>(entity =>
+        {
+            // RESTRICCIÓN: el saldo nunca puede ser negativo (RNF-INT-03). La base de datos lo
+            // garantiza aunque el código de la aplicación se equivocara.
+            entity.ToTable("cube_balances", table =>
+                table.HasCheckConstraint("CK_cube_balances_Balance_NotNegative", "\"Balance\" >= 0"));
+            entity.HasKey(balance => balance.PlayerId);
+
+            // El Guid lo asigna la aplicación (es el Id de la cuenta).
+            entity.Property(balance => balance.PlayerId).ValueGeneratedNever();
         });
     }
 }

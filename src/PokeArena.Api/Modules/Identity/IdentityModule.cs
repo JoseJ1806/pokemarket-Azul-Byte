@@ -91,9 +91,10 @@ public static class IdentityModule
         // Puerto IPlayerAccountRepository → PostgreSQL con Entity Framework.
         services.AddScoped<IPlayerAccountRepository, EfPlayerAccountRepository>();
 
-        // Puerto IInitialCollectionGranter → TEMPORALMENTE una versión que no hace nada.
-        // CUANDO EXISTA EL MÓDULO DE COLECCIÓN, cambiar SOLO esta línea por su clase.
-        services.AddScoped<IInitialCollectionGranter, NoOpInitialCollectionGranter>();
+        // Puerto IInitialCollectionGranter: lo registra el módulo Colección (AddCollectionModule),
+        // que es quien sabe entregar la colección inicial. Identidad solo conoce la interfaz.
+        // Antes, aquí se registraba NoOpInitialCollectionGranter, una versión provisional
+        // que no entregaba nada y que ya se eliminó.
 
         // Casos de uso del módulo.
         services.AddScoped<SignInWithProviderUseCase>();

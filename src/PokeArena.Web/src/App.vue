@@ -4,6 +4,7 @@ import { guardarToken, obtenerToken } from "./api/clienteApi.js";
 import BuscarCartas from "./components/BuscarCartas.vue";
 import CrearCarta from "./components/CrearCarta.vue";
 import CrearUbicacion from "./components/CrearUbicacion.vue";
+import Bienvenida from "./components/Bienvenida.vue";
 import IniciarSesion from "./components/IniciarSesion.vue";
 
 // Las pantallas disponibles. 'id' identifica la pantalla en el código y 'etiqueta'
@@ -45,6 +46,23 @@ function alCambiarSesion() {
   token.value = obtenerToken();
   versionToken.value++;
 }
+
+// Qué pasó con la colección inicial en el último inicio de sesión ("Granted",
+// "AlreadyGranted", "NotAvailable"), o null si no se conoce (sin sesión, o página recargada).
+// Lo usa la pantalla de bienvenida para decidir si saluda.
+const resultadoEntrega = ref(null);
+
+// IniciarSesion avisa que un jugador entró y trae el resultado de la entrega.
+function alIniciarSesion(datos) {
+  resultadoEntrega.value = datos?.initialCollection ?? null;
+  alCambiarSesion();
+}
+
+// IniciarSesion avisa que el jugador salió: se olvida el resultado.
+function alCerrarSesion() {
+  resultadoEntrega.value = null;
+  alCambiarSesion();
+}
 </script>
 
 <template>
@@ -55,9 +73,13 @@ function alCambiarSesion() {
        tienen forma de entrar con Google. -->
   <IniciarSesion
     :version-token="versionToken"
-    @sesion-iniciada="alCambiarSesion"
-    @sesion-cerrada="alCambiarSesion"
+    @sesion-iniciada="alIniciarSesion"
+    @sesion-cerrada="alCerrarSesion"
   />
+
+  <!-- Sprint 2: bienvenida y colección del jugador. Solo se dibuja si hay sesión de jugador;
+       para un administrador o sin sesión, no muestra nada. -->
+  <Bienvenida :version-token="versionToken" :resultado-entrega="resultadoEntrega" />
 
   <details class="tarjeta">
     <summary>Token de desarrollo</summary>

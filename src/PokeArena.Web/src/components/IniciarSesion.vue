@@ -100,7 +100,9 @@ async function alRecibirCredencial(respuestaGoogle) {
     guardarToken(resultado.accessToken);
     jugador.value = resultado.player;
     esCuentaNueva.value = resultado.isNewAccount;
-    emit("sesion-iniciada");
+    // Se avisa a App.vue con el resultado de la entrega de la colección inicial, para que
+    // la pantalla de bienvenida sepa si debe saludar o mostrar el aviso de "no disponible".
+    emit("sesion-iniciada", { initialCollection: resultado.initialCollection });
   } catch (e) {
     // ErrorApi ya trae el mensaje de la API (por ejemplo "El token de Google no es
     // válido" o "No se pudo contactar a Google").

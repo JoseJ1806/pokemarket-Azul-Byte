@@ -30,6 +30,10 @@ public static class CardRules
             ["Lucha"] = "LUC"
         };
 
+    // Rareza "Común". Otros módulos NO la repiten: le piden a Catálogo "las Comunes
+    // disponibles" (ICardCatalogQuery) y Catálogo usa esta constante.
+    public const string CommonRarity = "Común";
+
     public static readonly IReadOnlySet<string> Rarities =
         new HashSet<string>(StringComparer.Ordinal)
         {
