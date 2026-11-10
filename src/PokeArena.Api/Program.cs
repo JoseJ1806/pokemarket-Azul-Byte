@@ -24,6 +24,7 @@ var builder = WebApplication.CreateBuilder(args);
 
 // Registra la documentación OpenAPI disponible durante el desarrollo.
 builder.Services.AddOpenApi();
+builder.Services.AddDistributedMemoryCache();
 
 // MÓDULO IDENTIDAD Y ACCESO (Sprint 2).
 // Antes aquí estaba la validación de JWT y la política AdminOnly. Se movieron a
@@ -56,7 +57,8 @@ app.UseHttpsRedirection();
 // Por eso RequireAuthorization puede producir 401 o 403 correctamente.
 app.UseAuthentication();
 app.UseAuthorization();
-app.UseStaticFiles();
+if (Directory.Exists("wwwroot"))
+    app.UseStaticFiles();
 
 // Endpoint de búsqueda: recibe filtros HTTP y devuelve una página de cartas.
 app.MapGet("/api/cards", async (

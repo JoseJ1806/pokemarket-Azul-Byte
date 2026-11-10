@@ -2,6 +2,7 @@
 import { ref } from "vue";
 import { guardarToken, obtenerToken } from "./api/clienteApi.js";
 import BuscarCartas from "./components/BuscarCartas.vue";
+import CatalogoJugador from "./components/CatalogoJugador.vue";
 import CrearCarta from "./components/CrearCarta.vue";
 import CrearUbicacion from "./components/CrearUbicacion.vue";
 import Bienvenida from "./components/Bienvenida.vue";
@@ -10,6 +11,7 @@ import IniciarSesion from "./components/IniciarSesion.vue";
 // Las pantallas disponibles. 'id' identifica la pantalla en el código y 'etiqueta'
 // es el texto de su pestaña. Agregar una pantalla nueva empieza por sumar una línea aquí.
 const PANTALLAS = [
+  { id: "catalogo", etiqueta: "Catálogo" },
   { id: "buscar", etiqueta: "Buscar cartas" },
   { id: "carta", etiqueta: "Crear carta" },
   { id: "ubicacion", etiqueta: "Crear ubicación" },
@@ -109,6 +111,9 @@ function alCerrarSesion() {
        perdería lo escrito en el formulario y los resultados de la búsqueda. -->
   <section v-show="pantalla === 'buscar'">
     <BuscarCartas />
+  </section>
+  <section v-show="pantalla === 'catalogo'">
+    <CatalogoJugador :version-token="versionToken" />
   </section>
   <section v-show="pantalla === 'carta'">
     <CrearCarta :version-token="versionToken" />

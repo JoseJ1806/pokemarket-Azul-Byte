@@ -241,6 +241,30 @@ public sealed class CardsApiFactory : WebApplicationFactory<Program>, IAsyncLife
         await db.SaveChangesAsync();
     }
 
+    public async Task AddOwnedAvailableCardAsync(Guid playerId)
+    {
+        using var scope = Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<PokeArenaDbContext>();
+        var card = new Card
+        {
+            Code = "OWN-01",
+            Name = "Carta propia",
+            ImageStatus = "Lista",
+            IsAvailable = true,
+            Cost = 1,
+            Power = 8,
+            Type = "Agua",
+            Rarity = "Rara"
+        };
+        db.Cards.Add(card);
+        await db.SaveChangesAsync();
+        db.CardCopies.Add(PokeArena.Api.Modules.Collection.Domain.CardCopy.CreateInitial(
+            playerId,
+            card.Id,
+            DateTimeOffset.UtcNow));
+        await db.SaveChangesAsync();
+    }
+
     public async Task<int> CountCardsByIdempotencyKeyAsync(string key)
     {
         using var scope = Services.CreateScope();
@@ -263,9 +287,15 @@ public sealed class TestAuthHandler : AuthenticationHandler<AuthenticationScheme
         if (!Request.Headers.TryGetValue("X-Test-Role", out var role))
             return Task.FromResult(AuthenticateResult.NoResult());
         // Con X-Test-Role se crea una identidad para ejercitar la política real.
-        var identity = new ClaimsIdentity(new[] { new Claim(ClaimTypes.Role, role.ToString()) }, "Test");
+        var subject = Request.Headers["X-Test-Subject"].FirstOrDefault()
+            ?? "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
+        var identity = new ClaimsIdentity(
+            new[]
+            {
+                new Claim(ClaimTypes.Role, role.ToString()),
+                new Claim("sub", subject)
+            },
+            "Test");
         return Task.FromResult(AuthenticateResult.Success(new AuthenticationTicket(new ClaimsPrincipal(identity), "Test")));
     }
 }
-
-
