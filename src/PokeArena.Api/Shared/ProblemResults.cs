@@ -11,6 +11,11 @@ public static class ProblemResults
         {
             DomainErrorKind.NotFound => StatusCodes.Status404NotFound,
             DomainErrorKind.Conflict => StatusCodes.Status409Conflict,
+            // Agregados en el Sprint 2 para Inicio de sesión.
+            // 401: la persona no pudo demostrar quién es (token del proveedor inválido).
+            DomainErrorKind.Unauthorized => StatusCodes.Status401Unauthorized,
+            // 503: un servicio externo, como Google, no respondió. No es culpa del cliente.
+            DomainErrorKind.Unavailable => StatusCodes.Status503ServiceUnavailable,
             _ => StatusCodes.Status400BadRequest
         };
 

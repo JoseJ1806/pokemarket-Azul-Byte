@@ -30,9 +30,23 @@ public static class CardRules
             ["Lucha"] = "LUC"
         };
 
+    // Rareza "Común". Otros módulos NO la repiten: le piden a Catálogo "las Comunes
+    // disponibles" (ICardCatalogQuery) y Catálogo usa esta constante.
+    public const string CommonRarity = "Común";
+
     public static readonly IReadOnlySet<string> Rarities =
         new HashSet<string>(StringComparer.Ordinal)
         {
             "Común", "Poco común", "Rara", "Legendaria"
         };
+
+    // Indica si un costo está dentro del rango permitido (0 a 10).
+    // Es la ÚNICA definición de esta regla: Crear carta y Buscar carta la usan
+    // las dos, así no pueden contradecirse.
+    public static bool IsValidCost(int cost) => cost is >= MinCost and <= MaxCost;
+
+    // Indica si un poder está dentro del rango permitido (-20 a 20).
+    // "is >= a and <= b" significa "mayor o igual que a Y menor o igual que b".
+    // Los poderes negativos son válidos: una carta puede restar poder a su ubicación.
+    public static bool IsValidPower(int power) => power is >= MinPower and <= MaxPower;
 }

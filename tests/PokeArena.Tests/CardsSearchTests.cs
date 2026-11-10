@@ -60,7 +60,7 @@ public class CardsSearchTests
 
         // Todos los filtros se envían juntos y deben afectar la misma consulta.
         var combined = await Get(client,
-            "q=drag&minCost=2&maxCost=4&power=120&type=Agua&rarity=Rara&abilityCode=AB-01&abilityTrigger=combate&abilityEffect=roba");
+            "q=drag&minCost=2&maxCost=4&power=12&type=Agua&rarity=Rara&abilityCode=AB-01&abilityTrigger=combate&abilityEffect=roba");
         Assert.Equal(1, combined.GetProperty("total").GetInt32());
 
         // Una combinación válida sin coincidencias es un 200 con lista vacía.
@@ -76,8 +76,6 @@ public class CardsSearchTests
         // Estos valores se rechazan antes de consultar PostgreSQL.
         Assert.Equal(HttpStatusCode.BadRequest,
             (await client.GetAsync("/api/cards?cost=11")).StatusCode);
-        Assert.Equal(HttpStatusCode.BadRequest,
-            (await client.GetAsync("/api/cards?power=15")).StatusCode);
         Assert.Equal(HttpStatusCode.BadRequest,
             (await client.GetAsync("/api/cards?minCost=5&maxCost=2")).StatusCode);
 
@@ -115,7 +113,7 @@ public class CardsSearchTests
 
     [Fact]
     public async Task SearchCards_ReturnsAllRequiredFieldsAndNoAbilityFilter()
-    {
+    {   
         // Confirma el contrato JSON que consume el cliente de cartas.
         var client = CreateAdminClient();
         // El texto especial se normaliza y busca cartas sin código de habilidad.
@@ -125,6 +123,34 @@ public class CardsSearchTests
         foreach (var property in new[] { "code", "name", "imageUrl", "thumbnailUrl", "imageStatus", "isAvailable", "cost", "power", "type", "rarity", "abilityCode", "abilityTrigger", "abilityEffect", "abilityAffectedType" })
             Assert.True(item.TryGetProperty(property, out _), property);
     }
+
+        [Theory]
+        [InlineData("power=21")]       // arriba del máximo permitido (20)
+        [InlineData("power=-21")]      // debajo del mínimo permitido (-20)
+        [InlineData("minPower=-30")]   // el mismo rango aplica a los límites
+        [InlineData("type=Dragon")]    // tipo que no existe
+        [InlineData("rarity=Mitica")]  // rareza que no existe
+        public async Task SearchCards_RejectsValuesOutsideTheAllowedValues(string query)
+        {
+            // Criterio de aceptación: un valor fuera de lo permitido se rechaza.
+            var client = CreateAdminClient();
+            Assert.Equal(HttpStatusCode.BadRequest,
+                (await client.GetAsync($"/api/cards?{query}")).StatusCode);
+        }
+
+        [Theory]
+        [InlineData("power=15")]                    // antes se rechazaba, pero es válido
+        [InlineData("power=-10")]                   // los negativos son válidos
+        [InlineData("minPower=-20&maxPower=20")]    // el rango completo permitido
+        [InlineData("type=agua")]                   // se ignoran mayúsculas
+        [InlineData("type=electrico")]              // y tildes
+        public async Task SearchCards_AcceptsAllowedValues(string query)
+        {
+            // Si el valor es permitido, es 200 aunque no haya resultados.
+            var client = CreateAdminClient();
+            Assert.Equal(HttpStatusCode.OK,
+                (await client.GetAsync($"/api/cards?{query}")).StatusCode);
+        }
 
     private HttpClient CreateAdminClient()
     {
@@ -194,10 +220,10 @@ public sealed class CardsApiFactory : WebApplicationFactory<Program>, IAsyncLife
             await db.Database.ExecuteSqlRawAsync("TRUNCATE TABLE cards RESTART IDENTITY;");
             // Los datos no dependen de cartas existentes en la base del desarrollador.
             db.Cards.AddRange(
-                new Card { Code = "DRG-01", Name = "Dragón Azul", ImageUrl = "https://img/1", ImageStatus = "Lista", Cost = 3, Power = 120, Type = "Agua", Rarity = "Rara", AbilityCode = "AB-01", AbilityTrigger = "Combate", AbilityEffect = "Roba una carta" },
-                new Card { Code = "PIK-01", Name = "Pikachu", ImageUrl = "https://img/2", ImageStatus = "Lista", Cost = 1, Power = 80, Type = "Electrico", Rarity = "Comun" },
-                new Card { Code = "PIK-02", Name = "Pikachu V", ImageUrl = "https://img/3", ImageStatus = "Pendiente", Cost = 2, Power = 100, Type = "Electrico", Rarity = "Rara" },
-                new Card { Code = "FIR-01", Name = "Fuego", ImageUrl = "https://img/4", ImageStatus = "Lista", Cost = 5, Power = 200, Type = "Fuego", Rarity = "Comun" });
+                new Card { Code = "DRG-01", Name = "Dragón Azul", ImageUrl = "https://img/1", ImageStatus = "Lista", Cost = 3, Power = 12, Type = "Agua", Rarity = "Rara", AbilityCode = "AB-01", AbilityTrigger = "Combate", AbilityEffect = "Roba una carta" },
+                new Card { Code = "PIK-01", Name = "Pikachu", ImageUrl = "https://img/2", ImageStatus = "Lista", Cost = 1, Power = 8, Type = "Electrico", Rarity = "Comun" },
+                new Card { Code = "PIK-02", Name = "Pikachu V", ImageUrl = "https://img/3", ImageStatus = "Pendiente", Cost = 2, Power = 10, Type = "Electrico", Rarity = "Rara" },
+                new Card { Code = "FIR-01", Name = "Fuego", ImageUrl = "https://img/4", ImageStatus = "Lista", Cost = 5, Power = 20, Type = "Fuego", Rarity = "Comun" });
             await db.SaveChangesAsync();
         }
         finally
@@ -241,3 +267,5 @@ public sealed class TestAuthHandler : AuthenticationHandler<AuthenticationScheme
         return Task.FromResult(AuthenticateResult.Success(new AuthenticationTicket(new ClaimsPrincipal(identity), "Test")));
     }
 }
+
+

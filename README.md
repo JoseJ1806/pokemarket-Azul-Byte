@@ -7,7 +7,7 @@
 - `src/PokeArena.Api/Modules/`: monolito modular con núcleo hexagonal (ADR-001). Cada módulo tiene sus casos de uso, sus puertos y sus adaptadores:
   - `Catalog/`: módulo Catálogo de Cartas. `Domain/` guarda las reglas y los estados, `Application/` los casos de uso `CreateCardUseCase` y `GetCardUseCase` y el puerto `ICardRepository` (RepositorioCartas), `Infrastructure/` el adaptador `EfCardRepository` y `Http/` los endpoints `POST /api/cards` y `GET /api/cards/{id}`.
   - `Images/`: módulo Imágenes. `ProcessImageUseCase` valida la imagen y genera la versión pequeña con 3 intentos (ADR-002). Sus puertos son `IImageCodec` y `IImageStore` (AlmacenImagenes), implementados con SkiaSharp y el sistema de archivos.
-  - `Identity/`: módulo Identidad y Acceso. Define la política `AdminOnly`.
+  - `Identity/`: módulo Identidad y Acceso. Configura la validación de JWT, define la política `AdminOnly` y, desde el Sprint 2, el inicio de sesión con Google. `Domain/` tiene la cuenta `PlayerAccount`, `Application/` el caso de uso `SignInWithProviderUseCase` y sus puertos (`IExternalIdentityProvider`, `IPlayerAccountRepository`, `IAccessTokenIssuer`, `IInitialCollectionGranter`), `Infrastructure/` los adaptadores (`GoogleIdentityProvider`, `EfPlayerAccountRepository`, `JwtAccessTokenIssuer`) y `Http/` los endpoints `POST /api/auth/google` y `GET /api/me`.
 - `src/PokeArena.Api/Shared/`: manejo de errores con formato único (`DomainError` y `ProblemResults`).
 - `src/PokeArena.Api/Data/`: `DbContext` y factoría usada por Entity Framework Core para conectarse a PostgreSQL.
 - `src/PokeArena.Api/Migrations/`: cambios versionados del esquema de la base de datos. Los archivos `*.Designer.cs` son generados por EF Core y no se editan manualmente.
@@ -31,6 +31,8 @@ datos y se aplican en este orden:
 4. `20261021200158_CreateCardMvp`: agrega la llave de idempotencia, la miniatura y la disponibilidad a `cards`, y crea la tabla `abilities` con `HAB-000` (`Sin Habilidad`).
 5. `20261021201439_RemoveLegacyCardFields`: elimina los campos antiguos `SetCode` y `CardNumber`.
 6. `20261021211949_AddAbilityAffectedType`: agrega el tipo afectado por la habilidad a `abilities` y a `cards`.
+7. `20261024232616_CreateLocations`: crea la tabla `locations`.
+8. `20261107073901_AddPlayerAccounts`: crea la tabla `player_accounts` con el índice único sobre proveedor e identificador del proveedor (Sprint 2, inicio de sesión).
 
 También debe conservarse `PokeArenaDbContextModelSnapshot.cs`, que Entity Framework
 usa para comparar el modelo actual con futuras migraciones. Los archivos
@@ -72,8 +74,11 @@ dotnet run `
 ```
 
 Con el perfil `http`, la API escucha en `http://localhost:5034`. La búsqueda queda disponible en `http://localhost:5034/api/cards` y requiere un
-JWT válido con el rol `Admin`. El proyecto no genera tokens; deben provenir del
-sistema de identidad configurado para el entorno.
+JWT válido con el rol `Admin`. Los jugadores obtienen su JWT iniciando sesión con
+Google (ver "Inicio de sesión con Google"). Para administradores en desarrollo,
+`src/PokeArena.Web/scripts/generar-token.mjs` firma un token con la misma clave.
+Desde el Sprint 2 todo token debe traer el emisor `pokearena` y la audiencia
+`pokearena-api` (configurados en `appsettings.json`), o la API responde 401.
 
 Para comprobar la solución y ejecutar las pruebas:
 
@@ -117,6 +122,52 @@ Authorization: Bearer <jwt-admin>
 GET /api/cards?pageSize=20&cursor=<nextCursor>
 Authorization: Bearer <jwt-admin>
 ```
+
+## Inicio de sesión con Google
+
+Un jugador inicia sesión con su cuenta de Google y recibe una credencial propia de
+PokéArena (un JWT de 15 minutos). Desde ahí, todas las solicitudes usan esa
+credencial y no el token de Google (RNF-SEG-01). El flujo completo está en el
+diagrama de secuencia de la wiki V5.
+
+1. El navegador muestra el botón de Google (`IniciarSesion.vue`) y recibe un ID token.
+2. Lo envía a `POST /api/auth/google` con el cuerpo `{ "idToken": "..." }`.
+3. La API valida firma, emisor, audiencia y expiración con las claves públicas de Google.
+4. Busca la cuenta por proveedor e identificador de Google (no por correo). Si no
+   existe, la crea con rol `Player` y Elo 0. Dos ingresos simultáneos de una persona
+   nueva crean una sola cuenta gracias al índice único de `player_accounts`.
+5. Pide la colección inicial al módulo de colección (por ahora no hace nada).
+6. Responde 200 con accessToken, expiresAt, player, isNewAccount e initialCollection.
+
+Errores: 400 si falta `idToken`, 401 si el token de Google no es válido y 503 si
+Google no responde o si falta configurar el Client ID. Todos usan
+`application/problem+json` con el campo `code`.
+
+`GET /api/me` devuelve la cuenta dueña del token. No recibe Id en la ruta, así que
+no se pueden pedir datos de otro jugador (RNF-SEG-04).
+
+### Configurar el Client ID de Google
+
+El Client ID se obtiene en Google Cloud Console (credencial OAuth de tipo
+"Aplicación web" con los orígenes autorizados `http://localhost:5173` y
+`http://localhost`). No es secreto. Se configura en dos lugares con el mismo valor:
+
+```powershell
+# API (secretos de usuario, desde src\PokeArena.Api)
+dotnet user-secrets set "Authentication:Google:ClientId" "<client-id>"
+```
+
+```text
+# Frontend: copiar src/PokeArena.Web/.env.example como .env.local y completar
+VITE_GOOGLE_CLIENT_ID=<client-id>
+```
+
+Paso a paso para configurarlo en cada equipo, con solución de errores comunes:
+[docs/configurar-inicio-sesion-google.md](docs/configurar-inicio-sesion-google.md).
+
+Sin Client ID la API arranca igual y el inicio de sesión responde 503 explicando
+qué falta. Las pruebas automáticas no lo necesitan, porque reemplazan a Google por
+un proveedor falso.
 
 ## Cómo se crea una carta
 

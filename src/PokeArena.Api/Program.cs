@@ -2,19 +2,20 @@ using System.Text;
 using System.Text.Json;
 using System.Globalization;
 using System.Data;
-using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.IdentityModel.Tokens;
 using PokeArena.Api.Data;
 using PokeArena.Api.Models;
 using PokeArena.Api.Modules.Catalog;
 using PokeArena.Api.Modules.Identity;
 using PokeArena.Api.Modules.Images;
 using PokeArena.Api.Modules.Locations;
+using PokeArena.Api.Modules.Catalog.Domain;
+using PokeArena.Api.Modules.Collection;  
 
 // ARCHIVO PRINCIPAL DE LA API.
-// Aquí se registra la configuración, autenticación, autorización y PostgreSQL.
+// Aquí se registra la configuración, PostgreSQL y los módulos. La autenticación y la
+// autorización viven desde el Sprint 2 en el módulo Identidad (IdentityModule).
 // También se define GET /api/cards, que recibe filtros HTTP, consulta Card mediante
 // PokeArenaDbContext y devuelve el JSON que consume el cliente de PokeArena.
 // Crea el constructor de la aplicación y carga appsettings, variables de entorno
@@ -24,35 +25,11 @@ var builder = WebApplication.CreateBuilder(args);
 // Registra la documentación OpenAPI disponible durante el desarrollo.
 builder.Services.AddOpenApi();
 
-// La clave se obtiene de configuración segura; no se guarda en el código fuente.
-var signingKey = builder.Configuration["Jwt:SigningKey"];
-// Si no existe la clave, la API no inicia porque no podría validar tokens confiables.
-if (string.IsNullOrWhiteSpace(signingKey))
-    throw new InvalidOperationException("Jwt:SigningKey debe configurarse mediante secretos o variables de entorno.");
-
-builder.Services
-    // Indica que las peticiones usan el esquema estándar Authorization: Bearer.
-    .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
-    .AddJwtBearer(options =>
-    {
-        // Define qué debe comprobarse antes de considerar válido un JWT.
-        options.TokenValidationParameters = new TokenValidationParameters
-        {
-            // El token debe estar firmado con la clave configurada.
-            ValidateIssuerSigningKey = true,
-            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(signingKey)),
-            // Si se configuran emisor y audiencia, también se validan.
-            ValidateIssuer = !string.IsNullOrWhiteSpace(builder.Configuration["Jwt:Issuer"]),
-            ValidIssuer = builder.Configuration["Jwt:Issuer"],
-            ValidateAudience = !string.IsNullOrWhiteSpace(builder.Configuration["Jwt:Audience"]),
-            ValidAudience = builder.Configuration["Jwt:Audience"],
-            // Los tokens vencidos se rechazan y solo se tolera un minuto de diferencia.
-            ValidateLifetime = true,
-            ClockSkew = TimeSpan.FromMinutes(1)
-        };
-    });
-// La política AdminOnly vive en el módulo Identidad y Acceso.
-builder.Services.AddAdminAuthorization();
+// MÓDULO IDENTIDAD Y ACCESO (Sprint 2).
+// Antes aquí estaba la validación de JWT y la política AdminOnly. Se movieron a
+// Modules/Identity/IdentityModule.cs, que ahora también registra el inicio de sesión
+// con Google. Ahí se explica cada paso.
+builder.Services.AddIdentityModule(builder.Configuration);
 
 // Conecta la API con PostgreSQL y permite inyectar el DbContext en los endpoints.
 builder.Services.AddDbContext<PokeArenaDbContext>(options =>
@@ -63,6 +40,7 @@ builder.Services.AddDbContext<PokeArenaDbContext>(options =>
 builder.Services.AddImagesModule();
 builder.Services.AddCatalogModule();
 builder.Services.AddLocationsModule();
+builder.Services.AddCollectionModule(); 
 
 // Construye la aplicación con todos los servicios registrados arriba.
 var app = builder.Build();
@@ -143,6 +121,46 @@ app.MapGet("/api/cards", async (
         }
     }
 
+    // VALIDACIÓN DE FILTROS.
+    // Se hace ANTES de tocar la base de datos: un filtro inválido se rechaza sin gastar
+    // una consulta. Los rangos vienen de CardRules, la misma fuente que usa Crear carta.
+    // El formato del error se mantiene igual que el resto de esta búsqueda.
+
+    // Costo: exacto o límites del rango, todos entre MinCost y MaxCost.
+    if (cost.HasValue && !CardRules.IsValidCost(cost.Value))
+        return Results.BadRequest(new { error = $"cost debe estar entre {CardRules.MinCost} y {CardRules.MaxCost}." });
+    if (minCost.HasValue && !CardRules.IsValidCost(minCost.Value))
+        return Results.BadRequest(new { error = $"minCost debe estar entre {CardRules.MinCost} y {CardRules.MaxCost}." });
+    if (maxCost.HasValue && !CardRules.IsValidCost(maxCost.Value))
+        return Results.BadRequest(new { error = $"maxCost debe estar entre {CardRules.MinCost} y {CardRules.MaxCost}." });
+
+    // Poder: mismo patrón, con el rango -20 a 20 (negativos incluidos).
+    if (power.HasValue && !CardRules.IsValidPower(power.Value))
+        return Results.BadRequest(new { error = $"power debe estar entre {CardRules.MinPower} y {CardRules.MaxPower}." });
+    if (minPower.HasValue && !CardRules.IsValidPower(minPower.Value))
+        return Results.BadRequest(new { error = $"minPower debe estar entre {CardRules.MinPower} y {CardRules.MaxPower}." });
+    if (maxPower.HasValue && !CardRules.IsValidPower(maxPower.Value))
+        return Results.BadRequest(new { error = $"maxPower debe estar entre {CardRules.MinPower} y {CardRules.MaxPower}." });
+
+    // Un rango con el mínimo mayor que el máximo no puede dar resultados coherentes.
+    if (minCost.HasValue && maxCost.HasValue && minCost > maxCost)
+        return Results.BadRequest(new { error = "minCost no puede ser mayor que maxCost." });
+    if (minPower.HasValue && maxPower.HasValue && minPower > maxPower)
+        return Results.BadRequest(new { error = "minPower no puede ser mayor que maxPower." });
+
+    // Tipo y rareza: si se envían, deben existir. Antes un tipo inexistente devolvía
+    // una lista vacía, y la user story pide rechazarlo indicando el criterio.
+    if (!string.IsNullOrWhiteSpace(type) && !IsKnownValue(type, CardRules.TypePrefixes.Keys))
+        return Results.BadRequest(new
+        {
+            error = $"type no es válido. Valores permitidos: {string.Join(", ", CardRules.TypePrefixes.Keys)}."
+        });
+    if (!string.IsNullOrWhiteSpace(rarity) && !IsKnownValue(rarity, CardRules.Rarities))
+        return Results.BadRequest(new
+        {
+            error = $"rarity no es válida. Valores permitidos: {string.Join(", ", CardRules.Rarities)}."
+        });
+
     // El límite fija el conjunto inicial: cartas creadas después no alteran el recorrido.
     // En la primera petición se toma el mayor Id actual; las siguientes reutilizan
     // ese límite para que una carta nueva no aparezca a mitad del recorrido.
@@ -150,80 +168,6 @@ app.MapGet("/api/cards", async (
         .Select(card => (int?)card.Id)
         .MaxAsync(cancellationToken) ?? 0;
 
-// Costo es un entero con rango de negocio de 0 a 10.
-if (cost.HasValue && (cost < 0 || cost > 10))
-{
-    return Results.BadRequest(new
-    {
-        error = "cost debe estar entre 0 y 10."
-    });
-}
-
-// El límite inferior usa las mismas reglas que el costo exacto.
-if (minCost.HasValue && (minCost < 0 || minCost > 10))
-{
-    return Results.BadRequest(new
-    {
-        error = "minCost debe estar entre 0 y 10."
-    });
-}
-
-// El límite superior también se valida antes de consultar la base.
-if (maxCost.HasValue && (maxCost < 0 || maxCost > 10))
-{
-    return Results.BadRequest(new
-    {
-        error = "maxCost debe estar entre 0 y 10."
-    });
-}
-
-// Poder debe ser no negativo y múltiplo de diez.
-if (power.HasValue && (power < 0 || power % 10 != 0))
-{
-    return Results.BadRequest(new
-    {
-        error = "power debe ser un múltiplo de 10 no negativo."
-    });
-}
-
-// Valida el límite mínimo de poder antes de construir el filtro SQL.
-if (minPower.HasValue && (minPower < 0 || minPower % 10 != 0))
-{
-    return Results.BadRequest(new
-    {
-        error = "minPower debe ser un múltiplo de 10 no negativo."
-    });
-}
-
-// Valida el límite máximo de poder antes de construir el filtro SQL.
-if (maxPower.HasValue && (maxPower < 0 || maxPower % 10 != 0))
-{
-    return Results.BadRequest(new
-    {
-        error = "maxPower debe ser un múltiplo de 10 no negativo."
-    });
-}
-
-
-
-
-    // Un intervalo invertido no puede devolver resultados coherentes.
-    if (minCost.HasValue && maxCost.HasValue && minCost > maxCost)
-    {
-        return Results.BadRequest(new
-        {
-            error = "minCost no puede ser mayor que maxCost."
-        });
-    }
-
-    // La misma regla se aplica al intervalo de poder.
-    if (minPower.HasValue && maxPower.HasValue && minPower > maxPower)
-    {
-        return Results.BadRequest(new
-        {
-            error = "minPower no puede ser mayor que maxPower."
-        });
-    }
 
     // AsNoTracking indica que solo se leerán cartas; EF no necesita preparar cambios.
     // La consulta permanece en PostgreSQL; no se carga el catálogo completo en memoria.
@@ -417,6 +361,9 @@ app.MapGet("/api/abilities", async (
 // Los endpoints de Crear Carta viven en el módulo Catálogo (Modules/Catalog/Http).
 app.MapCatalogEndpoints();
 app.MapLocationsEndpoints();
+// POST /api/auth/google y GET /api/me (Sprint 2, Inicio de sesión con proveedor).
+app.MapIdentityEndpoints();
+app.MapCollectionEndpoints();
 
 app.Run();
 
@@ -431,6 +378,16 @@ static string Normalize(string value) => value.Normalize(NormalizationForm.FormD
     .Aggregate(new StringBuilder(), (builder, character) => builder.Append(character))
     .ToString()
     .Normalize(NormalizationForm.FormC);
+
+// Indica si 'valor' coincide con alguno de los valores válidos, sin distinguir
+// mayúsculas ni tildes. Usa Normalize para que "electrico" y "Eléctrico" cuenten
+// como lo mismo, igual que ya hace el filtro de la consulta SQL.
+static bool IsKnownValue(string valor, IEnumerable<string> valoresValidos)
+{
+    var normalizado = Normalize(valor.Trim());
+    return valoresValidos.Any(valido =>
+        Normalize(valido).Equals(normalizado, StringComparison.OrdinalIgnoreCase));
+}
 
 // Lee el cursor que la API devolvió en una respuesta anterior.
 static byte[] Base64UrlDecode(string value) => Convert.FromBase64String(

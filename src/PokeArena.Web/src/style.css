@@ -1,0 +1,232 @@
+/* ============================================================================
+   ESTILOS GLOBALES DE POKÉARENA
+   Reemplaza por completo el contenido de src/style.css que trae la plantilla de Vite.
+   La plantilla centraba todo el texto y la página; aquí se deja una interfaz
+   alineada a la izquierda, con formularios en columna y tablas legibles.
+   ============================================================================ */
+
+/* VARIABLES DE COLOR. Los colores se definen UNA vez aquí y el resto del archivo
+   los usa con var(--nombre). Para cambiar la paleta, solo se editan estas líneas.
+   El bloque de abajo redefine los mismos nombres cuando el sistema está en modo oscuro. */
+:root {
+  color-scheme: light dark;
+  --fondo: #ffffff;
+  --superficie: #f5f6f8;
+  --texto: #1d2433;
+  --texto-suave: #5b6475;
+  --borde: #d5d9e0;
+  --acento: #3b5bdb;
+  --acento-texto: #ffffff;
+  --error: #c92a2a;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --fondo: #14161c;
+    --superficie: #1d2029;
+    --texto: #e8eaf0;
+    --texto-suave: #9aa3b5;
+    --borde: #323746;
+    --acento: #6c8cff;
+    --acento-texto: #101320;
+    --error: #ff6b6b;
+  }
+}
+
+/* box-sizing: border-box hace que el ancho de un campo INCLUYA su relleno y borde.
+   Sin esto, un campo al 100% se saldría de su contenedor. */
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family:
+    system-ui,
+    -apple-system,
+    "Segoe UI",
+    Roboto,
+    sans-serif;
+  background: var(--fondo);
+  color: var(--texto);
+  line-height: 1.5;
+}
+
+/* Contenedor principal: ancho máximo cómodo de leer, centrado en la página,
+   pero con el texto alineado a la izquierda. */
+#app {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 1.5rem 1rem 3rem;
+  text-align: left;
+}
+
+h1 {
+  font-size: 1.8rem;
+  margin: 0 0 1rem;
+}
+h2 {
+  font-size: 1.3rem;
+  margin: 0 0 1rem;
+}
+
+/* FORMULARIOS ------------------------------------------------------------- */
+
+/* Cada etiqueta envuelve su campo: el texto queda arriba y el campo debajo. */
+label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  font-size: 0.9rem;
+  color: var(--texto-suave);
+}
+
+input,
+select,
+textarea {
+  font: inherit;
+  color: var(--texto);
+  background: var(--superficie);
+  border: 1px solid var(--borde);
+  border-radius: 6px;
+  padding: 0.5rem 0.6rem;
+  width: 100%;
+}
+
+/* Un contorno visible al enfocar un campo ayuda a quien navega con teclado. */
+input:focus,
+select:focus,
+textarea:focus,
+button:focus-visible {
+  outline: 2px solid var(--acento);
+  outline-offset: 1px;
+}
+
+input[type="checkbox"] {
+  width: auto;
+}
+
+button {
+  font: inherit;
+  cursor: pointer;
+  color: var(--texto);
+  background: var(--superficie);
+  border: 1px solid var(--borde);
+  border-radius: 6px;
+  padding: 0.5rem 1rem;
+}
+button:hover:not(:disabled) {
+  border-color: var(--acento);
+}
+button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* La acción principal de cada pantalla (Crear, Buscar) se distingue de las demás. */
+button.primario {
+  background: var(--acento);
+  color: var(--acento-texto);
+  border-color: var(--acento);
+  font-weight: 600;
+}
+
+/* Un campo con su etiqueta y su mensaje de error. Ver CampoFormulario.vue. */
+.campo {
+  margin-bottom: 0.9rem;
+}
+.campo.con-error input,
+.campo.con-error select {
+  border-color: var(--error);
+}
+
+/* El mismo estilo sirve para el error junto a un campo y para el error general. */
+.mensaje-error {
+  color: var(--error);
+  font-size: 0.85rem;
+  margin: 0.25rem 0 0;
+}
+
+/* Varios campos en una misma línea. Se parten en varias líneas si no caben. */
+.fila {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+.fila > * {
+  flex: 1 1 160px;
+}
+
+/* ESTRUCTURA -------------------------------------------------------------- */
+
+.tarjeta {
+  background: var(--superficie);
+  border: 1px solid var(--borde);
+  border-radius: 10px;
+  padding: 1rem 1.25rem;
+  margin-bottom: 1.25rem;
+}
+
+/* Pestañas de navegación entre pantallas. */
+.pestanas {
+  display: flex;
+  gap: 0.25rem;
+  border-bottom: 1px solid var(--borde);
+  margin-bottom: 1.25rem;
+}
+.pestanas button {
+  background: transparent;
+  border: none;
+  border-bottom: 3px solid transparent;
+  border-radius: 0;
+  color: var(--texto-suave);
+}
+.pestanas button.activa {
+  color: var(--texto);
+  font-weight: 600;
+  border-bottom-color: var(--acento);
+}
+
+/* RESULTADOS -------------------------------------------------------------- */
+
+/* El texto con la respuesta de la API (JSON) conserva sus saltos de línea. */
+pre {
+  white-space: pre-wrap;
+  word-break: break-word;
+  background: var(--superficie);
+  border: 1px solid var(--borde);
+  border-radius: 6px;
+  padding: 0.75rem;
+  font-size: 0.85rem;
+}
+/* Un <pre> sin contenido no debe dibujar una caja vacía. */
+pre:empty {
+  display: none;
+}
+
+/* La tabla puede desplazarse a los lados en pantallas angostas, en vez de
+   romper el diseño de toda la página. */
+.tabla-scroll {
+  overflow-x: auto;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 1rem;
+  font-size: 0.9rem;
+}
+th,
+td {
+  text-align: left;
+  padding: 0.5rem 0.6rem;
+  border-bottom: 1px solid var(--borde);
+  vertical-align: top;
+}
+th {
+  color: var(--texto-suave);
+  font-weight: 600;
+}
+img {
+  max-width: 100%;
+}
