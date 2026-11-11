@@ -40,6 +40,37 @@ public static class LocationEndpoints
         return app;
     }
 
+    // Consulta de una ubicación por id. Solo para administradores, porque también muestra
+    // ubicaciones cuya imagen está Pendiente o Fallida.
+    public static IEndpointRouteBuilder MapGetLocation(this IEndpointRouteBuilder app)
+    {
+        app.MapGet("/api/locations/{id:int}", GetLocationAsync)
+            .WithName("GetLocation")
+            .WithTags("Locations")
+            .WithSummary("Consulta una ubicación de juego por id.")
+            .WithDescription(
+                "Solo para administradores. Devuelve la ubicación con su configuración, su efecto y el "
+                + "estado de la imagen. Error 404: location-not-found.")
+            .RequireAuthorization(AdminAuthorization.PolicyName)
+            .Produces<LocationResponse>(StatusCodes.Status200OK)
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .Produces(StatusCodes.Status401Unauthorized)
+            .Produces(StatusCodes.Status403Forbidden);
+
+        return app;
+    }
+
+    private static async Task<IResult> GetLocationAsync(
+        int id,
+        GetLocationUseCase useCase,
+        CancellationToken cancellationToken)
+    {
+        var result = await useCase.ExecuteAsync(id, cancellationToken);
+        return result.Error is { } error
+            ? ProblemResults.From(error)
+            : Results.Ok(LocationResponse.From(result.Location!));
+    }
+
     // 201 cuando se crea la ubicación y 200 cuando la misma Idempotency-Key ya la había creado.
     private static async Task<IResult> CreateLocationAsync(
         [FromForm] CreateLocationRequest request,
@@ -68,6 +99,6 @@ public static class LocationEndpoints
         var response = LocationResponse.From(result.Location!);
         return result.IsReplay
             ? Results.Ok(response)
-            : Results.Json(response, statusCode: StatusCodes.Status201Created);
+            : Results.Created($"/api/locations/{response.Id}", response);
     }
 }

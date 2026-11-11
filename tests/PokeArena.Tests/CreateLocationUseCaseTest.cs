@@ -292,6 +292,9 @@ public class CreateLocationUseCaseTests
 
         public Location? CommittedLocation { get; private set; }
 
+        public Task<Location?> FindByIdAsync(int id, CancellationToken cancellationToken) =>
+            Task.FromResult(ExistingLocation?.Id == id ? ExistingLocation : null);
+
         public Task<Location?> FindByIdempotencyKeyAsync(string idempotencyKey, CancellationToken cancellationToken) =>
             Task.FromResult(ExistingLocation);
 

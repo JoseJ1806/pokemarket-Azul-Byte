@@ -100,7 +100,7 @@ public sealed class CreateLocationUseCase(
 
     // Misma llave y mismos datos es un reintento válido. Misma llave con datos distintos es un
     // uso incorrecto de la llave y se rechaza con 409. La imagen no se compara porque no se
-    // guarda su huella.
+    // guarda su huella. Los parámetros del efecto se comparan como JSON y no como texto.
     private static CreateLocationResult ReplayOrConflict(Location existing, LocationSettings settings)
     {
         var sameRequest =
@@ -110,7 +110,7 @@ public sealed class CreateLocationUseCase(
             && existing.EnergyMode == settings.EnergyMode
             && existing.EnergyAmount == settings.EnergyAmount
             && existing.EffectType == settings.EffectType
-            && existing.EffectParameters == settings.EffectParameters;
+            && LocationEffectParameters.AreEquivalent(existing.EffectParameters, settings.EffectParameters);
 
         return sameRequest
             ? CreateLocationResult.Replayed(existing)
