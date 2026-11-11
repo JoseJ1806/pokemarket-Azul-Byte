@@ -1,6 +1,5 @@
 using PokeArena.Api.Modules.Images.Application;
 using PokeArena.Api.Modules.Locations.Domain;
-using PokeArena.Api.Modules.Locations.Domain.Effects;
 using PokeArena.Api.Shared;
 
 namespace PokeArena.Api.Modules.Locations.Application;
@@ -27,8 +26,8 @@ public sealed record CreateLocationResult(Location? Location, bool IsReplay, Dom
 }
 
 // CASO DE USO: CREAR UBICACIÓN (módulo Ubicaciones).
-// Orden del flujo:
-// 1. Valida los campos, la configuración, el efecto y la llave de idempotencia.
+// Las reglas de entrada viven en CreateLocationValidator; aquí solo queda el flujo:
+// 1. Valida el comando (campos, configuración, efecto y llave de idempotencia).
 // 2. Si la llave ya creó una ubicación, devuelve esa misma ubicación.
 // 3. Valida la imagen 4:3 y prepara la versión pequeña, fuera de cualquier bloqueo.
 // 4. Dentro de una unidad de trabajo exclusiva guarda las imágenes y la ubicación.
@@ -40,87 +39,27 @@ public sealed class CreateLocationUseCase(
 {
     private const string ImagesFolder = "uploads/locations";
 
-    // Datos ya validados y normalizados. Sirven para crear y para comparar reintentos.
-    private sealed record Settings(
-        string Name,
-        string Description,
-        int CardLimit,
-        string EnergyMode,
-        int EnergyAmount,
-        string? EffectType,
-        string? EffectParameters);
-
     public async Task<CreateLocationResult> ExecuteAsync(
         CreateLocationCommand command,
         CancellationToken cancellationToken)
     {
-        if (string.IsNullOrWhiteSpace(command.IdempotencyKey))
-            return Invalid("missing-idempotency-key", "Idempotency-Key es obligatorio.", "Idempotency-Key");
+        var validation = CreateLocationValidator.Validate(command, effects);
+        if (validation.Error is { } validationError)
+            return CreateLocationResult.Failed(validationError);
 
-        if (command.IdempotencyKey.Length > LocationRules.MaxIdempotencyKeyLength)
-            return Invalid(
-                "invalid-field",
-                $"Idempotency-Key no puede superar {LocationRules.MaxIdempotencyKeyLength} caracteres.",
-                "Idempotency-Key");
-
-        var name = command.Name?.Trim();
-        if (string.IsNullOrWhiteSpace(name))
-            return Invalid("required-field", "name es obligatorio.", "name");
-
-        if (name.Length > LocationRules.MaxNameLength)
-            return Invalid("invalid-field", $"name no puede superar {LocationRules.MaxNameLength} caracteres.", "name");
-
-        var description = command.Description?.Trim();
-        if (string.IsNullOrWhiteSpace(description))
-            return Invalid("required-field", "description es obligatorio.", "description");
-
-        if (description.Length > LocationRules.MaxDescriptionLength)
-            return Invalid(
-                "invalid-field",
-                $"description no puede superar {LocationRules.MaxDescriptionLength} caracteres.",
-                "description");
-
-        if (command.CardLimit is null)
-            return Invalid("required-field", "cardLimit es obligatorio.", "cardLimit");
-
-        if (string.IsNullOrWhiteSpace(command.EnergyMode))
-            return Invalid("required-field", "energyMode es obligatorio.", "energyMode");
-
-        if (command.EnergyAmount is null)
-            return Invalid("required-field", "energyAmount es obligatorio.", "energyAmount");
-
-        var settingsError = LocationSettingsRules.Validate(
-            command.CardLimit.Value, command.EnergyMode, command.EnergyAmount.Value);
-        if (settingsError is not null)
-            return CreateLocationResult.Failed(settingsError);
-
-        var effectType = string.IsNullOrWhiteSpace(command.EffectType) ? null : command.EffectType.Trim();
-        var effect = effects.Validate(effectType, command.EffectParameters);
-        if (effect.Error is not null)
-            return CreateLocationResult.Failed(effect.Error);
-
-        if (command.Image is null)
-            return Invalid("required-field", "image es obligatorio.", "image");
-
-        var settings = new Settings(
-            name,
-            description,
-            command.CardLimit.Value,
-            command.EnergyMode,
-            command.EnergyAmount.Value,
-            effectType,
-            effect.NormalizedParameters);
+        var request = validation.Value!;
+        var settings = request.Settings;
 
         // Un reintento de red con la misma llave devuelve la ubicación ya creada sin procesar la imagen.
-        var existing = await locations.FindByIdempotencyKeyAsync(command.IdempotencyKey, cancellationToken);
+        var existing = await locations.FindByIdempotencyKeyAsync(request.IdempotencyKey, cancellationToken);
         if (existing is not null)
             return ReplayOrConflict(existing, settings);
 
-        var prepared = images.Prepare(command.Image, ImageRequirements.ForLocation, cancellationToken);
+        var prepared = images.Prepare(request.Image, ImageRequirements.ForLocation, cancellationToken);
         if (prepared.Error is not null)
             return CreateLocationResult.Failed(prepared.Error);
 
-        await using var scope = await locations.BeginCreationAsync(command.IdempotencyKey, cancellationToken);
+        await using var scope = await locations.BeginCreationAsync(request.IdempotencyKey, cancellationToken);
 
         // Otra solicitud con la misma llave pudo terminar mientras esta esperaba su turno.
         var concurrent = await scope.FindExistingAsync(cancellationToken);
@@ -141,7 +80,7 @@ public sealed class CreateLocationUseCase(
                 ThumbnailUrl = stored.ThumbnailUrl,
                 ImageStatus = imageReady ? LocationImageStatus.Ready : LocationImageStatus.Failed,
                 IsAvailable = imageReady,
-                IdempotencyKey = command.IdempotencyKey,
+                IdempotencyKey = request.IdempotencyKey,
                 CardLimit = settings.CardLimit,
                 EnergyMode = settings.EnergyMode,
                 EnergyAmount = settings.EnergyAmount,
@@ -162,7 +101,7 @@ public sealed class CreateLocationUseCase(
     // Misma llave y mismos datos es un reintento válido. Misma llave con datos distintos es un
     // uso incorrecto de la llave y se rechaza con 409. La imagen no se compara porque no se
     // guarda su huella.
-    private static CreateLocationResult ReplayOrConflict(Location existing, Settings settings)
+    private static CreateLocationResult ReplayOrConflict(Location existing, LocationSettings settings)
     {
         var sameRequest =
             existing.Name == settings.Name
@@ -181,7 +120,4 @@ public sealed class CreateLocationUseCase(
                 "La Idempotency-Key ya se usó con datos distintos. Use una llave nueva para crear otra ubicación.",
                 "Idempotency-Key"));
     }
-
-    private static CreateLocationResult Invalid(string code, string message, string field) =>
-        CreateLocationResult.Failed(DomainError.Validation(code, message, field));
 }
