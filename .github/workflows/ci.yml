@@ -1,0 +1,55 @@
+# Integración continua: compila la solución y corre todas las pruebas en cada push y Pull Request.
+# Usa el mismo PostgreSQL y las mismas credenciales de desarrollo que compose.yaml.
+name: CI
+
+on:
+  push:
+    branches: [main, develop, "feature/**", "refactor/**"]
+  pull_request:
+    branches: [main, develop]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_DB: pokearena
+          POSTGRES_USER: pokearena
+          POSTGRES_PASSWORD: local_dev_password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U pokearena -d pokearena"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Restaurar dependencias
+        run: dotnet restore PokeArena.slnx
+
+      - name: Compilar
+        run: dotnet build PokeArena.slnx --no-restore --configuration Release
+
+      - name: Pruebas
+        run: >-
+          dotnet test PokeArena.slnx --no-build --configuration Release
+          --logger "console;verbosity=normal"
+          --logger "trx;LogFileName=resultados.trx"
+          --results-directory TestResults
+
+      - name: Publicar resultados de pruebas
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: resultados-pruebas
+          path: TestResults

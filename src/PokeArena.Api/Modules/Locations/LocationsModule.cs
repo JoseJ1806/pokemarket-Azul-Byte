@@ -19,12 +19,14 @@ public static class LocationsModule
 
         services.AddScoped<ILocationRepository, EfLocationRepository>();
         services.AddScoped<CreateLocationUseCase>();
+        services.AddScoped<GetLocationUseCase>();
         return services;
     }
 
     public static IEndpointRouteBuilder MapLocationsEndpoints(this IEndpointRouteBuilder app)
     {
         app.MapCreateLocation();
+        app.MapGetLocation();
         return app;
     }
 }
