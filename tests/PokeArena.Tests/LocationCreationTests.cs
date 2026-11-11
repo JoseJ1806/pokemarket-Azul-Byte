@@ -98,6 +98,34 @@ public class LocationCreationTests
         Assert.Equal(HttpStatusCode.Conflict, second.StatusCode);
     }
 
+    // Tarea 218: PostgreSQL devuelve el jsonb con otros espacios, así que el reintento se
+    // compara como JSON. Antes este reintento válido respondía 409.
+    [Fact]
+    public async Task CreateLocation_RetryWithSameKeyAndEffect_ReturnsOkWithSameId()
+    {
+        using var client = AdminClient("loc-retry-effect-001");
+        var effect = new Dictionary<string, string?>
+        {
+            ["EffectType"] = "BonificacionPorTipo",
+            ["EffectParameters"] = "{\"tipo\":\"Fuego\",\"cantidad\":2}"
+        };
+
+        using var firstContent = BuildContent(effect);
+        var first = await client.PostAsync("/api/locations", firstContent);
+        using var secondContent = BuildContent(effect);
+        var second = await client.PostAsync("/api/locations", secondContent);
+
+        var firstBody = await first.Content.ReadAsStringAsync();
+        var secondBody = await second.Content.ReadAsStringAsync();
+        Assert.True(first.StatusCode == HttpStatusCode.Created, firstBody);
+        Assert.True(second.StatusCode == HttpStatusCode.OK, secondBody);
+        using var firstJson = JsonDocument.Parse(firstBody);
+        using var secondJson = JsonDocument.Parse(secondBody);
+        Assert.Equal(
+            firstJson.RootElement.GetProperty("id").GetInt32(),
+            secondJson.RootElement.GetProperty("id").GetInt32());
+    }
+
     [Theory]
     [InlineData("CardLimit", "6", "cardLimit")]
     [InlineData("CardLimit", null, "cardLimit")]
