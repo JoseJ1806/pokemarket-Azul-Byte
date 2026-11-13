@@ -88,7 +88,8 @@ jobs:
           echo "TOKEN=$token" >> "$GITHUB_ENV"
 
       - name: Verificar la búsqueda antes de medir
-        run: curl -sf -H "Authorization: Bearer $TOKEN" "$BASE_URL/api/cards?pageSize=1" | head -c 400
+        run: |
+          curl -sf -H "Authorization: Bearer $TOKEN" "$BASE_URL/api/cards?pageSize=1" | head -c 400
 
       - uses: grafana/setup-k6-action@v1
 
