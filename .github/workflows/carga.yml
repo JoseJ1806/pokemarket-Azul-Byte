@@ -1,0 +1,117 @@
+# Prueba de carga de la búsqueda de cartas (tarea 222).
+# Levanta PostgreSQL y la API, carga 10.000 cartas de prueba, corre k6 contra GET /api/cards
+# y publica el extracto de latencias en el resumen del workflow y como artefacto.
+# Se ejecuta cuando cambian la prueba, la herramienta de datos o la búsqueda, y también a mano
+# desde la pestaña Actions (workflow_dispatch) cuando este archivo esté en la rama principal.
+name: Prueba de carga
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [develop, "feature/**"]
+    paths:
+      - "tests/carga/**"
+      - "tools/PokeArena.CargaDatos/**"
+      - ".github/workflows/carga.yml"
+      - "src/PokeArena.Api/Program.cs"
+  pull_request:
+    branches: [develop]
+    paths:
+      - "tests/carga/**"
+      - "tools/PokeArena.CargaDatos/**"
+      - ".github/workflows/carga.yml"
+      - "src/PokeArena.Api/Program.cs"
+
+jobs:
+  busqueda-cartas:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_DB: pokearena
+          POSTGRES_USER: pokearena
+          POSTGRES_PASSWORD: local_dev_password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U pokearena -d pokearena"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      ConnectionStrings__DefaultConnection: "Host=localhost;Port=5432;Database=pokearena;Username=pokearena;Password=local_dev_password"
+      # Clave que solo existe dentro de esta ejecución. La API y el script del token usan la misma.
+      Jwt__SigningKey: "clave-temporal-de-la-prueba-de-carga-en-ci"
+      BASE_URL: "http://localhost:5080"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Compilar la API y la herramienta de datos
+        run: |
+          dotnet build src/PokeArena.Api/PokeArena.Api.csproj --configuration Release
+          dotnet build tools/PokeArena.CargaDatos/PokeArena.CargaDatos.csproj --configuration Release
+
+      - name: Cargar 10.000 cartas de prueba
+        run: dotnet run --project tools/PokeArena.CargaDatos --configuration Release --no-build -- 10000
+
+      - name: Levantar la API
+        working-directory: src/PokeArena.Api/bin/Release/net10.0
+        env:
+          ASPNETCORE_ENVIRONMENT: Production
+          ASPNETCORE_URLS: ${{ env.BASE_URL }}
+          # Sin registrar cada consulta SQL: el log no debe pesar en la medición.
+          Logging__LogLevel__Default: Warning
+        run: |
+          nohup dotnet PokeArena.Api.dll > "$GITHUB_WORKSPACE/api.log" 2>&1 &
+          for intento in $(seq 1 30); do
+            estado=$(curl -s -o /dev/null -w '%{http_code}' "$BASE_URL/api/cards" || true)
+            if [ "$estado" = "401" ]; then echo "La API está lista"; exit 0; fi
+            sleep 2
+          done
+          echo "La API no respondió a tiempo"
+          cat "$GITHUB_WORKSPACE/api.log"
+          exit 1
+
+      - name: Generar token de administrador
+        run: |
+          token=$(node src/PokeArena.Web/scripts/generar-token.mjs)
+          echo "::add-mask::$token"
+          echo "TOKEN=$token" >> "$GITHUB_ENV"
+
+      - name: Verificar la búsqueda antes de medir
+        run: curl -sf -H "Authorization: Bearer $TOKEN" "$BASE_URL/api/cards?pageSize=1" | head -c 400
+
+      - uses: grafana/setup-k6-action@v1
+
+      - name: Correr la prueba de carga
+        working-directory: tests/carga
+        run: k6 run busqueda-cartas.js
+
+      - name: Publicar el extracto de latencias
+        if: always()
+        run: |
+          if [ -f tests/carga/resultados-carga.md ]; then
+            cat tests/carga/resultados-carga.md >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "No se generó el extracto de latencias." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Guardar resultados
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: resultados-prueba-carga
+          path: |
+            tests/carga/resultados-carga.md
+            tests/carga/resultados-carga.json
+            api.log
+          if-no-files-found: warn
