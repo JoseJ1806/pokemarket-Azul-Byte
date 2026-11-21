@@ -126,6 +126,104 @@ public class CreateCardUseCaseTests
         Assert.Null(result.Card);
     }
 
+    // ---- Región crítica (ADR de Crear Carta): los archivos van antes y fuera del candado ----
+
+    [Fact]
+    public async Task FilesAreStoredBeforeTheCriticalRegionAndNothingIsWrittenInsideIt()
+    {
+        var store = new FakeImageStore();
+        var repository = new FakeCardRepository();
+        store.CriticalRegionOpen = () => repository.ScopeActive;
+        repository.CountFiles = () => store.Files.Count;
+
+        var result = await CreateUseCase(new FakeImageCodec(0), store, repository)
+            .ExecuteAsync(ValidCommand(), CancellationToken.None);
+
+        Assert.Null(result.Error);
+        // Cuando se abre la región crítica, las dos versiones de la imagen ya existen.
+        Assert.Equal(2, repository.FilesWhenScopeOpened);
+        // Ningún archivo se escribe ni se borra mientras el candado está tomado.
+        Assert.Equal(0, store.OperationsInsideCriticalRegion);
+    }
+
+    [Fact]
+    public async Task FileNamesDoNotDependOnTheCardCode()
+    {
+        var store = new FakeImageStore();
+
+        var result = await CreateUseCase(new FakeImageCodec(0), store, new FakeCardRepository())
+            .ExecuteAsync(ValidCommand(), CancellationToken.None);
+
+        // El código se reserva dentro de la región crítica, después de guardar los archivos.
+        Assert.Null(result.Error);
+        Assert.DoesNotContain(store.Files, path => path.Contains("PKA-AGU-001"));
+        Assert.Contains("-small.webp", result.Card!.ThumbnailUrl);
+    }
+
+    [Fact]
+    public async Task EvolutionCycle_DiscardsTheStoredFilesAfterTheCriticalRegion()
+    {
+        var store = new FakeImageStore();
+        var repository = new FakeCardRepository
+        {
+            AbilityToReturn = new Ability
+            {
+                Code = "HAB-EVO", Name = "Evolución", IsEvolution = true, TargetCardCode = "PKA-AGU-002"
+            },
+            EvolutionCycle = true
+        };
+        store.CriticalRegionOpen = () => repository.ScopeActive;
+
+        var result = await CreateUseCase(new FakeImageCodec(0), store, repository)
+            .ExecuteAsync(ValidCommand(), CancellationToken.None);
+
+        Assert.Equal("evolution-cycle", result.Error!.Code);
+        Assert.Empty(store.Files);
+        Assert.Null(repository.CommittedCard);
+        // Los archivos se borran con el candado ya liberado.
+        Assert.Equal(0, store.OperationsInsideCriticalRegion);
+    }
+
+    [Fact]
+    public async Task EvolutionWithoutTarget_StoresNothingAndNeverOpensTheCriticalRegion()
+    {
+        var store = new FakeImageStore();
+        var repository = new FakeCardRepository
+        {
+            AbilityToReturn = new Ability { Code = "HAB-EVO", Name = "Evolución", IsEvolution = true }
+        };
+
+        var result = await CreateUseCase(new FakeImageCodec(0), store, repository)
+            .ExecuteAsync(ValidCommand(), CancellationToken.None);
+
+        Assert.Equal("invalid-evolution", result.Error!.Code);
+        Assert.Empty(store.Files);
+        Assert.False(repository.ScopeOpened);
+    }
+
+    [Fact]
+    public async Task SameKeyFinishesWhileWaiting_IsReplayAndDiscardsItsOwnFiles()
+    {
+        var store = new FakeImageStore();
+        var repository = new FakeCardRepository
+        {
+            // Otra solicitud con la misma llave confirma su carta mientras esta espera el candado.
+            ConcurrentCard = new Card
+            {
+                Id = 7, Code = "PKA-AGU-001", Name = "Carta", Cost = 3, Power = 5,
+                Type = "Agua", Rarity = "Común", AbilityCode = "HAB-000", IdempotencyKey = "key-1"
+            }
+        };
+
+        var result = await CreateUseCase(new FakeImageCodec(0), store, repository)
+            .ExecuteAsync(ValidCommand(), CancellationToken.None);
+
+        Assert.True(result.IsReplay);
+        Assert.Equal(7, result.Card!.Id);
+        Assert.Null(repository.CommittedCard);
+        Assert.Empty(store.Files);
+    }
+
     private static CreateCardUseCase CreateUseCase(
         FakeImageCodec codec,
         FakeImageStore store,
@@ -164,14 +262,25 @@ public class CreateCardUseCaseTests
     {
         public HashSet<string> Files { get; } = [];
 
+        // Indica si la región crítica está abierta. Sirve para detectar archivos tocados dentro de ella.
+        public Func<bool> CriticalRegionOpen { get; set; } = () => false;
+
+        public int OperationsInsideCriticalRegion { get; private set; }
+
         public Task SaveAsync(string relativePath, byte[] content, CancellationToken cancellationToken)
         {
+            if (CriticalRegionOpen())
+                OperationsInsideCriticalRegion++;
+
             Files.Add(relativePath);
             return Task.CompletedTask;
         }
 
         public Task DeleteAsync(string relativePath, CancellationToken cancellationToken)
         {
+            if (CriticalRegionOpen())
+                OperationsInsideCriticalRegion++;
+
             Files.Remove(relativePath);
             return Task.CompletedTask;
         }
@@ -187,6 +296,22 @@ public class CreateCardUseCaseTests
 
         public bool ScopeOpened { get; private set; }
 
+        // Verdadero mientras el alcance (la región crítica) está abierto.
+        public bool ScopeActive { get; private set; }
+
+        // Cuántos archivos existían cuando se abrió la región crítica.
+        public Func<int> CountFiles { get; set; } = () => 0;
+
+        public int FilesWhenScopeOpened { get; private set; }
+
+        // Habilidad que devuelve FindAbilityAsync. Por defecto, una habilidad sin efecto.
+        public Ability? AbilityToReturn { get; set; }
+
+        // Carta que otra solicitud con la misma llave confirmó mientras esta esperaba el candado.
+        public Card? ConcurrentCard { get; set; }
+
+        public bool EvolutionCycle { get; set; }
+
         public Card? CommittedCard { get; private set; }
 
         public Task<Card?> FindByIdempotencyKeyAsync(string idempotencyKey, CancellationToken cancellationToken) =>
@@ -196,7 +321,7 @@ public class CreateCardUseCaseTests
             Task.FromResult<Card?>(null);
 
         public Task<Ability?> FindAbilityAsync(string code, CancellationToken cancellationToken) =>
-            Task.FromResult<Ability?>(new Ability { Code = code, Name = "Sin Habilidad" });
+            Task.FromResult<Ability?>(AbilityToReturn ?? new Ability { Code = code, Name = "Sin Habilidad" });
 
         public Task<ICardCreationScope> BeginCreationAsync(
             string idempotencyKey,
@@ -204,13 +329,15 @@ public class CreateCardUseCaseTests
             CancellationToken cancellationToken)
         {
             ScopeOpened = true;
+            ScopeActive = true;
+            FilesWhenScopeOpened = CountFiles();
             return Task.FromResult<ICardCreationScope>(new FakeScope(this));
         }
 
         private sealed class FakeScope(FakeCardRepository owner) : ICardCreationScope
         {
             public Task<Card?> FindExistingAsync(CancellationToken cancellationToken) =>
-                Task.FromResult<Card?>(null);
+                Task.FromResult(owner.ConcurrentCard);
 
             public Task<string> ReserveNextCodeAsync(CancellationToken cancellationToken) =>
                 Task.FromResult("PKA-AGU-001");
@@ -218,7 +345,7 @@ public class CreateCardUseCaseTests
             public Task<bool> EvolutionCreatesCycleAsync(
                 string newCardCode,
                 string targetCardCode,
-                CancellationToken cancellationToken) => Task.FromResult(false);
+                CancellationToken cancellationToken) => Task.FromResult(owner.EvolutionCycle);
 
             public Task CommitAsync(Card card, CancellationToken cancellationToken)
             {
@@ -229,7 +356,11 @@ public class CreateCardUseCaseTests
                 return Task.CompletedTask;
             }
 
-            public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+            public ValueTask DisposeAsync()
+            {
+                owner.ScopeActive = false;
+                return ValueTask.CompletedTask;
+            }
         }
     }
 }

@@ -15,6 +15,9 @@ public interface ICardRepository
 
     // Abre una unidad de trabajo exclusiva para una llave de idempotencia y un tipo de carta.
     // Dos creaciones con la misma llave o del mismo tipo se atienden una a la vez.
+    // Este es el inicio de la REGIÓN CRÍTICA de Crear Carta: termina al confirmar o descartar el
+    // alcance. Dentro solo debe haber operaciones de base de datos (nada de archivos ni de red),
+    // para que los demás jugadores o administradores esperen lo mínimo.
     Task<ICardCreationScope> BeginCreationAsync(
         string idempotencyKey,
         string typePrefix,
