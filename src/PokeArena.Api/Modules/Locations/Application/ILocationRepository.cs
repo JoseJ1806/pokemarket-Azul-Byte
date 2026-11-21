@@ -7,6 +7,8 @@ namespace PokeArena.Api.Modules.Locations.Application;
 // EfLocationRepository la implementa con Entity Framework y PostgreSQL.
 public interface ILocationRepository
 {
+    Task<Location?> FindByIdAsync(int id, CancellationToken cancellationToken);
+
     Task<Location?> FindByIdempotencyKeyAsync(string idempotencyKey, CancellationToken cancellationToken);
 
     // Abre una unidad de trabajo exclusiva para una llave de idempotencia.

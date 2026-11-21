@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Herramienta de consola que llena la base de datos con cartas de prueba para medir la
+       búsqueda (tarea 222). Usa el mismo modelo y las mismas migraciones de la API. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\PokeArena.Api\PokeArena.Api.csproj" />
+  </ItemGroup>
+
+</Project>

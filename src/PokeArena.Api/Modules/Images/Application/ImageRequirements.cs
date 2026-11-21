@@ -14,6 +14,11 @@ public sealed record ImageRequirements(
     // Peso máximo permitido para cualquier imagen subida: 5 MB.
     public const long MaxFileSize = 5L * 1024 * 1024;
 
+    // Regla única del peso: el archivo debe tener contenido y no superar MaxFileSize.
+    // La usan el lector HTTP (para no cargar a memoria un archivo demasiado grande) y
+    // ProcessImageUseCase (para rechazarlo con invalid-image).
+    public static bool IsWithinMaxFileSize(long length) => length is > 0 and <= MaxFileSize;
+
     // Carta: vertical 5:7, mínimo 600 x 840 y versión pequeña de 200 x 280.
     public static readonly ImageRequirements ForCard = new("vertical 5:7", 5d / 7d, 600, 840, 200, 280);
 

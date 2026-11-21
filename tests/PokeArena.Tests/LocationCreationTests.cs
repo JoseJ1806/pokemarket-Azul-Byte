@@ -98,6 +98,94 @@ public class LocationCreationTests
         Assert.Equal(HttpStatusCode.Conflict, second.StatusCode);
     }
 
+    // Tarea 218: PostgreSQL devuelve el jsonb con otros espacios, así que el reintento se
+    // compara como JSON. Antes este reintento válido respondía 409.
+    [Fact]
+    public async Task CreateLocation_RetryWithSameKeyAndEffect_ReturnsOkWithSameId()
+    {
+        using var client = AdminClient("loc-retry-effect-001");
+        var effect = new Dictionary<string, string?>
+        {
+            ["EffectType"] = "BonificacionPorTipo",
+            ["EffectParameters"] = "{\"tipo\":\"Fuego\",\"cantidad\":2}"
+        };
+
+        using var firstContent = BuildContent(effect);
+        var first = await client.PostAsync("/api/locations", firstContent);
+        using var secondContent = BuildContent(effect);
+        var second = await client.PostAsync("/api/locations", secondContent);
+
+        var firstBody = await first.Content.ReadAsStringAsync();
+        var secondBody = await second.Content.ReadAsStringAsync();
+        Assert.True(first.StatusCode == HttpStatusCode.Created, firstBody);
+        Assert.True(second.StatusCode == HttpStatusCode.OK, secondBody);
+        using var firstJson = JsonDocument.Parse(firstBody);
+        using var secondJson = JsonDocument.Parse(secondBody);
+        Assert.Equal(
+            firstJson.RootElement.GetProperty("id").GetInt32(),
+            secondJson.RootElement.GetProperty("id").GetInt32());
+    }
+
+    // Tarea 218: GET /api/locations/{id}.
+    [Fact]
+    public async Task GetLocation_AfterCreating_ReturnsTheLocation()
+    {
+        using var client = AdminClient("loc-get-001");
+        using var content = BuildContent(new()
+        {
+            ["Name"] = "Bosque Sombrío",
+            ["EffectType"] = "RestriccionPorTurno",
+            ["EffectParameters"] = "{\"turnos\":[4,2]}"
+        });
+        var created = await client.PostAsync("/api/locations", content);
+        var createdBody = await created.Content.ReadAsStringAsync();
+        Assert.True(created.StatusCode == HttpStatusCode.Created, createdBody);
+        Assert.NotNull(created.Headers.Location);
+
+        var response = await client.GetAsync(created.Headers.Location);
+
+        var body = await response.Content.ReadAsStringAsync();
+        Assert.True(response.StatusCode == HttpStatusCode.OK, body);
+        using var createdJson = JsonDocument.Parse(createdBody);
+        using var json = JsonDocument.Parse(body);
+        Assert.Equal(createdJson.RootElement.GetProperty("id").GetInt32(), json.RootElement.GetProperty("id").GetInt32());
+        Assert.Equal("Bosque Sombrío", json.RootElement.GetProperty("name").GetString());
+        Assert.Equal("Lista", json.RootElement.GetProperty("imageStatus").GetString());
+        Assert.Equal(2, json.RootElement.GetProperty("effectParameters").GetProperty("turnos")[0].GetInt32());
+    }
+
+    [Fact]
+    public async Task GetLocation_UnknownId_ReturnsNotFound()
+    {
+        using var client = AdminClient("loc-get-404");
+
+        var response = await client.GetAsync("/api/locations/999999");
+
+        var body = await response.Content.ReadAsStringAsync();
+        Assert.True(response.StatusCode == HttpStatusCode.NotFound, body);
+        using var json = JsonDocument.Parse(body);
+        Assert.Equal("location-not-found", json.RootElement.GetProperty("code").GetString());
+    }
+
+    [Fact]
+    public async Task GetLocation_WithoutCredentials_ReturnsUnauthorized()
+    {
+        var response = await factory.CreateClient().GetAsync("/api/locations/1");
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task GetLocation_WithoutAdminRole_ReturnsForbidden()
+    {
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Add("X-Test-Role", "User");
+
+        var response = await client.GetAsync("/api/locations/1");
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+    }
+
     [Theory]
     [InlineData("CardLimit", "6", "cardLimit")]
     [InlineData("CardLimit", null, "cardLimit")]
