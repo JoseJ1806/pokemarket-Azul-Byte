@@ -18,6 +18,7 @@
 
 import { computed, onMounted, ref, watch } from "vue";
 import { obtenerMiColeccion } from "../api/autenticacion.js";
+import CartaVista from "./CartaVista.vue";
 
 const props = defineProps({
   // App.vue sube este número cada vez que cambia el token guardado (inicio o cierre de
@@ -37,7 +38,9 @@ const error = ref("");
 const cartas = computed(() => coleccion.value?.cards ?? []);
 
 // Total de copias (la API devuelve las cartas agrupadas, con su cantidad de copias).
-const totalCopias = computed(() => cartas.value.reduce((suma, carta) => suma + carta.copies, 0));
+const totalCopias = computed(() =>
+  cartas.value.reduce((suma, carta) => suma + carta.copies, 0),
+);
 
 async function cargar() {
   error.value = "";
@@ -67,8 +70,8 @@ watch(() => props.versionToken, cargar);
 
     <!-- SIN COLECCIÓN: la cuenta existe, pero todavía no se pudo entregar. -->
     <p v-if="totalCopias === 0" class="aviso">
-      El juego todavía no está disponible por el momento. Vuelve a entrar más tarde:
-      recibirás tu colección inicial cuando esté lista.
+      El juego todavía no está disponible por el momento. Vuelve a entrar más
+      tarde: recibirás tu colección inicial cuando esté lista.
     </p>
 
     <template v-else>
@@ -78,14 +81,16 @@ watch(() => props.versionToken, cargar);
         <strong>{{ totalCopias }}</strong>
       </p>
 
-      <!-- Una tarjeta por carta distinta. "copies" dice cuántas copias tiene. -->
+      <!-- Una carta por cada carta distinta. "copies" dice cuántas copias tiene. -->
       <ul class="cartas">
-        <li v-for="carta in cartas" :key="carta.cardId" class="carta">
-          <img v-if="carta.thumbnailUrl" :src="carta.thumbnailUrl" :alt="carta.name" />
-          <div v-else class="sin-imagen">sin imagen</div>
-          <strong>{{ carta.name }}</strong>
-          <span class="nota">{{ carta.type }} · {{ carta.rarity }}</span>
-          <span v-if="carta.copies > 1" class="copias">x{{ carta.copies }}</span>
+        <li v-for="carta in cartas" :key="carta.cardId">
+          <CartaVista
+            :nombre="carta.name"
+            :tipo="carta.type"
+            :rareza="carta.rarity"
+            :imagen="carta.thumbnailUrl"
+            :copias="carta.copies"
+          />
         </li>
       </ul>
     </template>
@@ -95,7 +100,8 @@ watch(() => props.versionToken, cargar);
 </template>
 
 <style scoped>
-/* Cuadrícula de cartas: tantas columnas como quepan, con un ancho mínimo por carta. */
+/* Cuadrícula de cartas: tantas columnas como quepan, con un ancho mínimo por carta.
+   El aspecto de cada carta vive en CartaVista.vue. */
 .cartas {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
@@ -103,41 +109,6 @@ watch(() => props.versionToken, cargar);
   list-style: none;
   padding: 0;
   margin: 0;
-}
-
-.carta {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
-  padding: 0.5rem;
-  border: 1px solid var(--borde);
-  border-radius: 8px;
-  background: var(--fondo);
-  text-align: center;
-}
-
-.carta img {
-  width: 100%;
-  border-radius: 6px;
-}
-
-.sin-imagen {
-  padding: 2rem 0;
-  color: var(--texto-suave);
-}
-
-/* Insignia con la cantidad de copias, solo cuando hay más de una. */
-.copias {
-  position: absolute;
-  top: 0.4rem;
-  right: 0.4rem;
-  padding: 0 0.4rem;
-  border-radius: 999px;
-  background: var(--acento);
-  color: var(--acento-texto);
-  font-size: 0.8rem;
-  font-weight: 600;
 }
 
 .bienvenida {
