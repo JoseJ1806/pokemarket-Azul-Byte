@@ -7,6 +7,7 @@ import CrearCarta from "./components/CrearCarta.vue";
 import CrearUbicacion from "./components/CrearUbicacion.vue";
 import Bienvenida from "./components/Bienvenida.vue";
 import IniciarSesion from "./components/IniciarSesion.vue";
+import IniciarPartida from "./components/IniciarPartida.vue";
 
 // Las pantallas disponibles. 'id' identifica la pantalla en el código y 'etiqueta'
 // es el texto de su pestaña. Agregar una pantalla nueva empieza por sumar una línea aquí.
@@ -15,6 +16,7 @@ const PANTALLAS = [
   { id: "buscar", etiqueta: "Buscar cartas" },
   { id: "carta", etiqueta: "Crear carta" },
   { id: "ubicacion", etiqueta: "Crear ubicación" },
+  { id: "partida", etiqueta: "Iniciar partida" },
 ];
 
 // La pantalla que se está viendo ahora.
@@ -120,5 +122,8 @@ function alCerrarSesion() {
   </section>
   <section v-show="pantalla === 'ubicacion'">
     <CrearUbicacion />
+  </section>
+  <section v-show="pantalla === 'partida'">
+    <IniciarPartida />
   </section>
 </template>

@@ -130,7 +130,10 @@ public class CreateCardUseCaseTests
         FakeImageCodec codec,
         FakeImageStore store,
         FakeCardRepository repository) =>
-        new(repository, new ProcessImageUseCase(codec, store, NullLogger<ProcessImageUseCase>.Instance));
+        new(
+            repository,
+            new ProcessImageUseCase(codec, store, NullLogger<ProcessImageUseCase>.Instance),
+            new NoOpCatalogCache());
 
     private static CreateCardCommand ValidCommand() => new(
         "key-1",
@@ -177,6 +180,24 @@ public class CreateCardUseCaseTests
         }
 
         public string GetUrl(string relativePath) => "/" + relativePath;
+    }
+
+    private sealed class NoOpCatalogCache : ICatalogCache
+    {
+        public Task<CatalogResponse?> GetAsync(string key, CancellationToken cancellationToken) =>
+            Task.FromResult<CatalogResponse?>(null);
+
+        public Task SetAsync(
+            string key,
+            Guid playerId,
+            CatalogResponse response,
+            TimeSpan ttl,
+            CancellationToken cancellationToken) => Task.CompletedTask;
+
+        public Task InvalidateCatalogAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+
+        public Task InvalidatePlayerAsync(Guid playerId, CancellationToken cancellationToken) =>
+            Task.CompletedTask;
     }
 
     private sealed class FakeCardRepository : ICardRepository

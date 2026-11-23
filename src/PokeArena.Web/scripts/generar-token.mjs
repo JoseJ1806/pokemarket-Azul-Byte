@@ -15,8 +15,8 @@ const encabezado = { alg: "HS256", typ: "JWT" };
 // Deben coincidir con Jwt:Issuer y Jwt:Audience de appsettings.json. Si no vienen,
 // la API responde 401 aunque la firma sea correcta.
 const contenido = {
-  sub: "admin-dev",
-  role: "Admin",
+  sub: process.env.Jwt__Subject ?? "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+  role: process.env.Jwt__Role ?? "Player",
   iss: process.env.Jwt__Issuer ?? "pokearena",
   aud: process.env.Jwt__Audience ?? "pokearena-api",
   iat: ahora,

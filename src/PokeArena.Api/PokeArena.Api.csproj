@@ -8,6 +8,11 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\PokeArena.GameEngine\PokeArena.GameEngine.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Caching.StackExchangeRedis" Version="10.0.13" />
     <!-- OpenAPI permite inspeccionar el endpoint durante el desarrollo. -->
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.13" />
     <!-- JWT valida credenciales y el rol Admin antes de ejecutar la búsqueda. -->

@@ -12,6 +12,7 @@ public static class CatalogModule
     public static IServiceCollection AddCatalogModule(this IServiceCollection services)
     {
         services.AddScoped<ICardRepository, EfCardRepository>();
+        services.AddScoped<ICatalogCache, DistributedCatalogCache>();
         // Interfaz pública de consulta: la usan otros módulos (hoy, Colección).
         services.AddScoped<ICardCatalogQuery, EfCardCatalogQuery>();
         services.AddScoped<CreateCardUseCase>();
@@ -20,8 +21,8 @@ public static class CatalogModule
         services.AddScoped<ICatalogService>(serviceProvider =>
             new CachedCatalogService(
                 serviceProvider.GetRequiredService<GetCatalogQueryHandler>(),
-                serviceProvider.GetRequiredService<IDistributedCache>(),
-                serviceProvider.GetRequiredService<ILogger<CachedCatalogService>>()));
+                serviceProvider.GetRequiredService<ICatalogCache>(),
+                serviceProvider.GetRequiredService<Microsoft.Extensions.Options.IOptions<CatalogCacheOptions>>()));
         return services;
     }
 

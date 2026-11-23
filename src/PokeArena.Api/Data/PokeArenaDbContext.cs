@@ -3,6 +3,7 @@ using PokeArena.Api.Models;
 using PokeArena.Api.Modules.Collection.Domain;
 using PokeArena.Api.Modules.Identity.Domain;
 using PokeArena.Api.Modules.Locations.Domain;
+using PokeArena.Api.Modules.Matches.Domain;
 
 namespace PokeArena.Api.Data;
 
@@ -32,6 +33,7 @@ public class PokeArenaDbContext(DbContextOptions<PokeArenaDbContext> options)
     public DbSet<CubeMovement> CubeMovements => Set<CubeMovement>();
 
     public DbSet<CubeBalance> CubeBalances => Set<CubeBalance>();
+    public DbSet<Match> Matches => Set<Match>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -252,6 +254,19 @@ public class PokeArenaDbContext(DbContextOptions<PokeArenaDbContext> options)
 
             // El Guid lo asigna la aplicación (es el Id de la cuenta).
             entity.Property(balance => balance.PlayerId).ValueGeneratedNever();
+        });
+
+        modelBuilder.Entity<Match>(entity =>
+        {
+            entity.ToTable("matches");
+            entity.HasKey(match => match.Id);
+            entity.Property(match => match.Id).ValueGeneratedNever();
+            entity.Property(match => match.Status).HasMaxLength(30).IsRequired();
+            entity.Property(match => match.IdempotencyKey).HasMaxLength(200).IsRequired();
+            entity.Property(match => match.ChallengerDeckCardIds).HasColumnType("jsonb").IsRequired();
+            entity.Property(match => match.OpponentDeckCardIds).HasColumnType("jsonb").IsRequired();
+            entity.HasIndex(match => match.IdempotencyKey).IsUnique();
+            entity.HasIndex(match => new { match.ChallengerPlayerId, match.OpponentPlayerId });
         });
     }
 }
