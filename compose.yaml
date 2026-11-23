@@ -1,0 +1,26 @@
+
+services:
+  # compose.yaml conecta la infraestructura local con la API y los tests.
+  postgres:
+    # Base de datos local para desarrollo y pruebas de integración.
+    image: postgres:17
+    container_name: pokearena-postgres
+    environment:
+      POSTGRES_DB: pokearena
+      POSTGRES_USER: pokearena
+      POSTGRES_PASSWORD: local_dev_password
+    ports:
+      # La API y los tests se conectan al puerto PostgreSQL local.
+      - "5432:5432"
+    volumes:
+      - pokearena-data:/var/lib/postgresql/data
+    healthcheck:
+      # Evita usar la base antes de que PostgreSQL acepte conexiones.
+      test: ["CMD-SHELL", "pg_isready -U pokearena -d pokearena"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  # Conserva los datos entre reinicios del contenedor.
+  pokearena-data:
