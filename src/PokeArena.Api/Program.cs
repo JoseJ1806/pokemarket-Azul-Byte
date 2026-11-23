@@ -12,6 +12,7 @@ using PokeArena.Api.Modules.Images;
 using PokeArena.Api.Modules.Locations;
 using PokeArena.Api.Modules.Catalog.Domain;
 using PokeArena.Api.Modules.Collection;  
+using PokeArena.Api.Modules.Matches;
 
 // ARCHIVO PRINCIPAL DE LA API.
 // Aquí se registra la configuración, PostgreSQL y los módulos. La autenticación y la
@@ -24,7 +25,21 @@ var builder = WebApplication.CreateBuilder(args);
 
 // Registra la documentación OpenAPI disponible durante el desarrollo.
 builder.Services.AddOpenApi();
-builder.Services.AddDistributedMemoryCache();
+var redisConfiguration = builder.Configuration["Cache:Redis:Configuration"];
+if (!string.IsNullOrWhiteSpace(redisConfiguration))
+{
+    builder.Services.AddSingleton<StackExchange.Redis.IConnectionMultiplexer>(
+        StackExchange.Redis.ConnectionMultiplexer.Connect(redisConfiguration));
+    builder.Services.AddStackExchangeRedisCache(options =>
+        options.Configuration = redisConfiguration);
+}
+else
+{
+    builder.Services.AddDistributedMemoryCache();
+}
+
+builder.Services.Configure<PokeArena.Api.Modules.Catalog.Application.CatalogCacheOptions>(
+    builder.Configuration.GetSection("Cache"));
 
 // MÓDULO IDENTIDAD Y ACCESO (Sprint 2).
 // Antes aquí estaba la validación de JWT y la política AdminOnly. Se movieron a
@@ -42,6 +57,7 @@ builder.Services.AddImagesModule();
 builder.Services.AddCatalogModule();
 builder.Services.AddLocationsModule();
 builder.Services.AddCollectionModule(); 
+builder.Services.AddMatchesModule();
 
 // Construye la aplicación con todos los servicios registrados arriba.
 var app = builder.Build();
@@ -366,6 +382,7 @@ app.MapLocationsEndpoints();
 // POST /api/auth/google y GET /api/me (Sprint 2, Inicio de sesión con proveedor).
 app.MapIdentityEndpoints();
 app.MapCollectionEndpoints();
+app.MapMatchesEndpoints();
 
 app.Run();
 

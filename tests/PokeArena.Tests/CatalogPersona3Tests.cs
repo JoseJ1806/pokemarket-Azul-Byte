@@ -1,7 +1,5 @@
-using System.Collections.Concurrent;
 using Microsoft.AspNetCore.Http;
-using Microsoft.Extensions.Caching.Distributed;
-using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 using PokeArena.Api.Modules.Catalog.Application;
 
 namespace PokeArena.Tests;
@@ -91,13 +89,13 @@ public sealed class CatalogPersona3Tests
     [Fact]
     public async Task Cache_ReturnsHitWithoutCallingDecoratedService()
     {
-        var cache = new TestDistributedCache();
+        var cache = new TestCatalogCache();
         var decorated = new CountingCatalogService(
             new CatalogResponse(1, 20, false, false, [new CatalogCard(1, "X", "X", "Agua", "Rara", 5, "HAB-000", 1, true, "https://img")]));
         var service = new CachedCatalogService(
             decorated,
             cache,
-            NullLogger<CachedCatalogService>.Instance);
+            Options.Create(new CatalogCacheOptions()));
 
         var response = await service.ExecuteAsync(Query(), CancellationToken.None);
         var second = await service.ExecuteAsync(Query(), CancellationToken.None);
@@ -110,7 +108,7 @@ public sealed class CatalogPersona3Tests
     [Fact]
     public async Task Cache_MissCallsDecoratedServiceAndStoresResponse()
     {
-        var cache = new TestDistributedCache();
+        var cache = new TestCatalogCache();
         var expected = new CatalogResponse(
             1, 20, false, false,
             [new CatalogCard(1, "X", "X", "Agua", "Rara", 5, "HAB-000", 1, true, "https://img")]);
@@ -118,7 +116,7 @@ public sealed class CatalogPersona3Tests
         var service = new CachedCatalogService(
             decorated,
             cache,
-            NullLogger<CachedCatalogService>.Instance);
+            Options.Create(new CatalogCacheOptions()));
 
         var response = await service.ExecuteAsync(Query(), CancellationToken.None);
         var second = await service.ExecuteAsync(Query(), CancellationToken.None);
@@ -126,6 +124,44 @@ public sealed class CatalogPersona3Tests
         Assert.Single(response.Items);
         Assert.Single(second.Items);
         Assert.Equal(1, decorated.Calls);
+    }
+
+    [Fact]
+    public async Task Cache_UsesConfiguredThirtySecondTtl()
+    {
+        var cache = new TestCatalogCache();
+        var decorated = new CountingCatalogService(
+            new CatalogResponse(1, 20, false, false, []));
+        var service = new CachedCatalogService(
+            decorated,
+            cache,
+            Options.Create(new CatalogCacheOptions
+            {
+                DefaultTtlSeconds = 30,
+                MaximumTtlSeconds = 60
+            }));
+
+        await service.ExecuteAsync(Query(), CancellationToken.None);
+
+        Assert.Equal(TimeSpan.FromSeconds(30), cache.LastTtl);
+    }
+
+    [Fact]
+    public async Task Cache_CatalogInvalidationCausesNextReadToMiss()
+    {
+        var cache = new TestCatalogCache();
+        var decorated = new CountingCatalogService(
+            new CatalogResponse(1, 20, false, false, []));
+        var service = new CachedCatalogService(
+            decorated,
+            cache,
+            Options.Create(new CatalogCacheOptions()));
+
+        await service.ExecuteAsync(Query(), CancellationToken.None);
+        await cache.InvalidateCatalogAsync(CancellationToken.None);
+        await service.ExecuteAsync(Query(), CancellationToken.None);
+
+        Assert.Equal(2, decorated.Calls);
     }
 
     private static CatalogQuery Query() =>
@@ -142,42 +178,33 @@ public sealed class CatalogPersona3Tests
         }
     }
 
-    private sealed class TestDistributedCache : IDistributedCache
+    private sealed class TestCatalogCache : ICatalogCache
     {
-        private readonly ConcurrentDictionary<string, byte[]> values = new();
+        private readonly Dictionary<string, CatalogResponse> values = new();
+        public TimeSpan? LastTtl { get; private set; }
 
-            public byte[]? Get(string key) =>
-                values.TryGetValue(key, out var value) ? value : null;
+        public Task<CatalogResponse?> GetAsync(string key, CancellationToken cancellationToken) =>
+            Task.FromResult(values.TryGetValue(key, out var value) ? value : null);
 
-            public Task<byte[]?> GetAsync(string key, CancellationToken token = default) =>
-                Task.FromResult(Get(key));
-
-            public void Set(string key, byte[] value, DistributedCacheEntryOptions options) =>
-                values[key] = value;
-
-            public Task SetAsync(
-                string key,
-                byte[] value,
-                DistributedCacheEntryOptions options,
-                CancellationToken token = default)
-            {
-                Set(key, value, options);
-                return Task.CompletedTask;
-            }
-
-            public void Refresh(string key)
-            {
-            }
-
-            public Task RefreshAsync(string key, CancellationToken token = default) =>
-                Task.CompletedTask;
-
-            public void Remove(string key) => values.TryRemove(key, out _);
-
-            public Task RemoveAsync(string key, CancellationToken token = default)
-            {
-                Remove(key);
-                return Task.CompletedTask;
+        public Task SetAsync(
+            string key,
+            Guid playerId,
+            CatalogResponse response,
+            TimeSpan ttl,
+            CancellationToken cancellationToken)
+        {
+            values[key] = response;
+            LastTtl = ttl;
+            return Task.CompletedTask;
         }
+
+        public Task InvalidateCatalogAsync(CancellationToken cancellationToken)
+        {
+            values.Clear();
+            return Task.CompletedTask;
+        }
+
+        public Task InvalidatePlayerAsync(Guid playerId, CancellationToken cancellationToken) =>
+            Task.CompletedTask;
     }
 }

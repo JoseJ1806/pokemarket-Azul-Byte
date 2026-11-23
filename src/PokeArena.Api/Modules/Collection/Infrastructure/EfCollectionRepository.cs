@@ -4,6 +4,7 @@ using Npgsql;
 using PokeArena.Api.Data;
 using PokeArena.Api.Modules.Collection.Application;
 using PokeArena.Api.Modules.Collection.Domain;
+using PokeArena.Api.Modules.Catalog.Application;
 
 namespace PokeArena.Api.Modules.Collection.Infrastructure;
 
@@ -20,7 +21,9 @@ namespace PokeArena.Api.Modules.Collection.Infrastructure;
 //    funciona con varias instancias (RNF-REN-03). Se suelta solo al terminar la transacción.
 // 2. CLAVE PRIMARIA de initial_deliveries: la última barrera. Si algún camino de código
 //    se saltara el candado, la base rechazaría la segunda entrega.
-public sealed class EfCollectionRepository(PokeArenaDbContext db) : ICollectionRepository
+public sealed class EfCollectionRepository(
+    PokeArenaDbContext db,
+    ICatalogCache catalogCache) : ICollectionRepository
 {
     public async Task<IInitialDeliveryScope> BeginDeliveryAsync(Guid playerId, CancellationToken cancellationToken)
     {
@@ -34,7 +37,7 @@ public sealed class EfCollectionRepository(PokeArenaDbContext db) : ICollectionR
                 "SELECT pg_advisory_xact_lock(hashtext({0}))",
                 new object[] { "initial-delivery:" + playerId },
                 cancellationToken);
-            return new DeliveryScope(db, transaction, playerId);
+            return new DeliveryScope(db, transaction, playerId, catalogCache);
         }
         catch
         {
@@ -60,7 +63,8 @@ public sealed class EfCollectionRepository(PokeArenaDbContext db) : ICollectionR
     private sealed class DeliveryScope(
         PokeArenaDbContext db,
         IDbContextTransaction transaction,
-        Guid playerId) : IInitialDeliveryScope
+        Guid playerId,
+        ICatalogCache catalogCache) : IInitialDeliveryScope
     {
         // Los movimientos anotados, para calcular el saldo al confirmar.
         private readonly List<CubeMovement> movements = [];
@@ -112,6 +116,7 @@ public sealed class EfCollectionRepository(PokeArenaDbContext db) : ICollectionR
             }
 
             await transaction.CommitAsync(cancellationToken);
+            await catalogCache.InvalidatePlayerAsync(playerId, cancellationToken);
         }
 
         public ValueTask DisposeAsync() => transaction.DisposeAsync();

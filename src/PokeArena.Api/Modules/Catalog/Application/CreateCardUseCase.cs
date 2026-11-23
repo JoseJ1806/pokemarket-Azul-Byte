@@ -32,7 +32,10 @@ public sealed record CreateCardResult(Card? Card, bool IsReplay, DomainError? Er
 // 3. Valida la imagen y prepara la versión pequeña, fuera de cualquier bloqueo.
 // 4. Dentro de una unidad de trabajo exclusiva reserva el código, guarda las imágenes
 //    y la carta. Si algo falla, borra los archivos para no dejar huérfanos.
-public sealed class CreateCardUseCase(ICardRepository cards, ProcessImageUseCase images)
+public sealed class CreateCardUseCase(
+    ICardRepository cards,
+    ProcessImageUseCase images,
+    ICatalogCache catalogCache)
 {
     private const string ImagesFolder = "uploads/cards";
 
@@ -100,6 +103,7 @@ public sealed class CreateCardUseCase(ICardRepository cards, ProcessImageUseCase
             };
 
             await scope.CommitAsync(card, cancellationToken);
+            await catalogCache.InvalidateCatalogAsync(cancellationToken);
             return CreateCardResult.Created(card);
         }
         catch
