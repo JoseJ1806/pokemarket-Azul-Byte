@@ -46,6 +46,7 @@ jobs:
       ConnectionStrings__DefaultConnection: "Host=localhost;Port=5432;Database=pokearena;Username=pokearena;Password=local_dev_password"
       # Clave que solo existe dentro de esta ejecución. La API y el script del token usan la misma.
       Jwt__SigningKey: "clave-temporal-de-la-prueba-de-carga-en-ci"
+      Jwt__Role: "Admin"
       BASE_URL: "http://localhost:5080"
 
     steps:
