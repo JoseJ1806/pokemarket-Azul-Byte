@@ -29,13 +29,14 @@ public sealed record CreateCardResult(Card? Card, bool IsReplay, DomainError? Er
 // Las reglas de entrada viven en CreateCardValidator; aquí solo queda el flujo:
 // 1. Valida el comando y busca la habilidad.
 // 2. Si la llave ya creó una carta, devuelve esa misma carta.
-// 3. Valida la imagen y prepara la versión pequeña, fuera de cualquier bloqueo.
-// 4. Dentro de una unidad de trabajo exclusiva reserva el código, guarda las imágenes
-//    y la carta. Si algo falla, borra los archivos para no dejar huérfanos.
-public sealed class CreateCardUseCase(
-    ICardRepository cards,
-    ProcessImageUseCase images,
-    ICatalogCache catalogCache)
+// 3. Valida la imagen, prepara la versión pequeña y GUARDA los archivos con un nombre único.
+//    Todo esto ocurre FUERA de la región crítica, porque escribir archivos es lento.
+// 4. REGIÓN CRÍTICA: una transacción corta de base de datos que reserva el código, revisa los
+//    ciclos de evolución e inserta la carta ya con las URL de sus imágenes. Solo allí se toman
+//    los candados, y dentro no hay ninguna operación de archivos.
+// 5. Si la carta no llega a confirmarse (error de negocio, repetición de otra solicitud o falla),
+//    se borran los archivos guardados en el paso 3 para no dejar huérfanos.
+public sealed class CreateCardUseCase(ICardRepository cards, ProcessImageUseCase images)
 {
     private const string ImagesFolder = "uploads/cards";
 
@@ -60,27 +61,31 @@ public sealed class CreateCardUseCase(
         if (prepared.Error is not null)
             return CreateCardResult.Failed(prepared.Error);
 
-        await using var scope = await cards.BeginCreationAsync(request.IdempotencyKey, request.TypePrefix, cancellationToken);
+        // Esta validación solo depende de la habilidad, así que se hace antes de guardar archivos.
+        if (ability.IsEvolution && string.IsNullOrWhiteSpace(ability.TargetCardCode))
+            return Invalid("invalid-evolution", "La habilidad de evolución debe tener una carta destino.", "abilityCode");
 
-        // Otra solicitud con la misma llave pudo terminar mientras esta esperaba su turno.
-        var concurrent = await scope.FindExistingAsync(cancellationToken);
-        if (concurrent is not null)
-            return ReplayOrConflict(concurrent, request, ability.Code);
-
-        var code = await scope.ReserveNextCodeAsync(cancellationToken);
-
-        if (ability.IsEvolution)
-        {
-            if (CreateCardValidator.ValidateAbility(ability) is { } abilityError)
-                return CreateCardResult.Failed(abilityError);
-
-            if (await scope.EvolutionCreatesCycleAsync(code, ability.TargetCardCode!, cancellationToken))
-                return Invalid("evolution-cycle", "La habilidad de evolución crea un ciclo o apunta a la misma carta.", "abilityCode");
-        }
-
-        var stored = await images.StoreAsync(ImagesFolder, code, prepared.Image!, cancellationToken);
+        // Los archivos se guardan ANTES de tomar los candados. El nombre es único (no depende del
+        // código de la carta, que todavía no se conoce), así que dos solicitudes nunca se pisan.
+        var stored = await images.StoreAsync(ImagesFolder, Guid.NewGuid().ToString("N"), prepared.Image!, cancellationToken);
+        var committed = false;
         try
         {
+            // REGIÓN CRÍTICA: desde BeginCreationAsync hasta CommitAsync solo hay operaciones de base
+            // de datos. Los candados se liberan solos al terminar la transacción (al salir del using).
+            await using var scope = await cards.BeginCreationAsync(command.IdempotencyKey, typePrefix, cancellationToken);
+
+            // Otra solicitud con la misma llave pudo terminar mientras esta esperaba su turno.
+            var concurrent = await scope.FindExistingAsync(cancellationToken);
+            if (concurrent is not null)
+                return ReplayOrConflict(concurrent, command, ability.Code);
+
+            var code = await scope.ReserveNextCodeAsync(cancellationToken);
+
+            if (ability.IsEvolution
+                && await scope.EvolutionCreatesCycleAsync(code, ability.TargetCardCode!, cancellationToken))
+                return Invalid("evolution-cycle", "La habilidad de evolución crea un ciclo o apunta a la misma carta.", "abilityCode");
+
             // La carta solo queda disponible cuando existen ambas versiones de la imagen.
             var imageReady = stored.ThumbnailUrl is not null;
             var card = new Card
@@ -103,13 +108,15 @@ public sealed class CreateCardUseCase(
             };
 
             await scope.CommitAsync(card, cancellationToken);
-            await catalogCache.InvalidateCatalogAsync(cancellationToken);
+            committed = true;
             return CreateCardResult.Created(card);
         }
-        catch
+        finally
         {
-            await images.DiscardAsync(stored, CancellationToken.None);
-            throw;
+            // Se ejecuta con la transacción ya cerrada y los candados liberados. Cubre todas las
+            // salidas sin confirmar: error de negocio, repetición de otra solicitud y excepciones.
+            if (!committed)
+                await images.DiscardAsync(stored, CancellationToken.None);
         }
     }
 
