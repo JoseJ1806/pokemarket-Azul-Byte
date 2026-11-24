@@ -27,6 +27,39 @@ public class CreateCardUseCaseTests
     }
 
     [Fact]
+    public async Task CardCreated_InvalidatesCatalogCacheOnce()
+    {
+        var cache = new NoOpCatalogCache();
+
+        var result = await CreateUseCase(new FakeImageCodec(0), new FakeImageStore(), new FakeCardRepository(), cache)
+            .ExecuteAsync(ValidCommand(), CancellationToken.None);
+
+        Assert.Null(result.Error);
+        Assert.Equal(1, cache.CatalogInvalidations);
+    }
+
+    [Fact]
+    public async Task ReplayWithSameKey_DoesNotInvalidateCatalogCache()
+    {
+        var cache = new NoOpCatalogCache();
+        var repository = new FakeCardRepository
+        {
+            // La llave ya creó esta carta: es un reintento, el catálogo no cambia.
+            ExistingCard = new Card
+            {
+                Id = 7, Code = "PKA-AGU-001", Name = "Carta", Cost = 3, Power = 5,
+                Type = "Agua", Rarity = "Común", AbilityCode = "HAB-000", IdempotencyKey = "key-1"
+            }
+        };
+
+        var result = await CreateUseCase(new FakeImageCodec(0), new FakeImageStore(), repository, cache)
+            .ExecuteAsync(ValidCommand(), CancellationToken.None);
+
+        Assert.True(result.IsReplay);
+        Assert.Equal(0, cache.CatalogInvalidations);
+    }
+
+    [Fact]
     public async Task ThumbnailFailsEveryAttempt_CardIsFailedAndNotAvailable()
     {
         var codec = new FakeImageCodec(failuresBeforeSuccess: int.MaxValue);
@@ -227,11 +260,12 @@ public class CreateCardUseCaseTests
     private static CreateCardUseCase CreateUseCase(
         FakeImageCodec codec,
         FakeImageStore store,
-        FakeCardRepository repository) =>
+        FakeCardRepository repository,
+        NoOpCatalogCache? cache = null) =>
         new(
             repository,
             new ProcessImageUseCase(codec, store, NullLogger<ProcessImageUseCase>.Instance),
-            new NoOpCatalogCache());
+            cache ?? new NoOpCatalogCache());
 
     private static CreateCardCommand ValidCommand() => new(
         "key-1",
@@ -303,7 +337,14 @@ public class CreateCardUseCaseTests
             TimeSpan ttl,
             CancellationToken cancellationToken) => Task.CompletedTask;
 
-        public Task InvalidateCatalogAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+        // Cuántas veces se invalidó el catálogo (para comprobar que se hace al crear una carta).
+        public int CatalogInvalidations { get; private set; }
+
+        public Task InvalidateCatalogAsync(CancellationToken cancellationToken)
+        {
+            CatalogInvalidations++;
+            return Task.CompletedTask;
+        }
 
         public Task InvalidatePlayerAsync(Guid playerId, CancellationToken cancellationToken) =>
             Task.CompletedTask;
