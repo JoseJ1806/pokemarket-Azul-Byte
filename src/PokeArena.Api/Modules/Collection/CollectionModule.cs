@@ -26,12 +26,19 @@ public static class CollectionModule
         services.AddScoped<IInitialCollectionGranter, GrantInitialCollectionUseCase>();
 
         services.AddScoped<GetCollectionUseCase>();
+
+        // Decks del jugador (Sprint 3): repositorio y casos de uso.
+        services.AddScoped<IDeckRepository, EfDeckRepository>();
+        services.AddScoped<CreateDeckUseCase>();
+        services.AddScoped<ListDecksUseCase>();
+        services.AddScoped<GetDeckUseCase>();
         return services;
     }
 
     public static IEndpointRouteBuilder MapCollectionEndpoints(this IEndpointRouteBuilder app)
     {
         app.MapGetMyCollection();
+        app.MapDeckEndpoints();
         return app;
     }
 }
