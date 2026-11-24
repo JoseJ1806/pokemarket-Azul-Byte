@@ -27,7 +27,9 @@ public sealed class EfCardCatalogQuery(PokeArenaDbContext db) : ICardCatalogQuer
         return await db.Cards.AsNoTracking()
             .Where(card => ids.Contains(card.Id))
             .Select(card => new CatalogCardSummary(
-                card.Id, card.Code, card.Name, card.Type, card.Rarity, card.ImageUrl, card.ThumbnailUrl))
+                card.Id, card.Code, card.Name, card.Type, card.Rarity, card.ImageUrl, card.ThumbnailUrl,
+                card.Cost, card.Power,
+                card.AbilityCode, card.AbilityTrigger, card.AbilityEffect, card.AbilityAffectedType))
             .ToListAsync(cancellationToken);
     }
 }

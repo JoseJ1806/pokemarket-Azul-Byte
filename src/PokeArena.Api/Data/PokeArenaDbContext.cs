@@ -35,6 +35,11 @@ public class PokeArenaDbContext(DbContextOptions<PokeArenaDbContext> options)
     public DbSet<CubeBalance> CubeBalances => Set<CubeBalance>();
     public DbSet<Match> Matches => Set<Match>();
 
+    // Sprint 3: decks del jugador (módulo Colección). Tablas decks y deck_cards.
+    public DbSet<Deck> Decks => Set<Deck>();
+
+    public DbSet<DeckCard> DeckCards => Set<DeckCard>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         // Este bloque define cómo Card se convierte en la tabla cards: nombres,
@@ -268,5 +273,41 @@ public class PokeArenaDbContext(DbContextOptions<PokeArenaDbContext> options)
             entity.HasIndex(match => match.IdempotencyKey).IsUnique();
             entity.HasIndex(match => new { match.ChallengerPlayerId, match.OpponentPlayerId });
         });
+
+        // decks: los decks de los jugadores. Los dos índices únicos son la ÚLTIMA BARRERA
+        // contra duplicados (el candado por jugador es la primera).
+        modelBuilder.Entity<Deck>(entity =>
+        {
+            entity.ToTable("decks");
+            entity.HasKey(deck => deck.Id);
+
+            // El Guid lo asigna la aplicación al crear el deck.
+            entity.Property(deck => deck.Id).ValueGeneratedNever();
+
+            entity.Property(deck => deck.Name).HasMaxLength(DeckRules.MaxNameLength).IsRequired();
+            entity.Property(deck => deck.IdempotencyKey).HasMaxLength(DeckRules.MaxIdempotencyKeyLength).IsRequired();
+
+            // Un jugador no puede tener dos decks con el mismo nombre.
+            entity.HasIndex(deck => new { deck.PlayerId, deck.Name }).IsUnique();
+
+            // Un reintento con la misma llave no puede crear un segundo deck.
+            entity.HasIndex(deck => new { deck.PlayerId, deck.IdempotencyKey }).IsUnique();
+
+            // Relación INTERNA del módulo: al borrar un deck se borran sus cartas.
+            entity.HasMany(deck => deck.Cards)
+                .WithOne()
+                .HasForeignKey(card => card.DeckId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // deck_cards: las 12 cartas de cada deck. La clave primaria compuesta impide repetir
+        // una carta dentro del mismo deck. CardId no tiene llave foránea hacia cards (misma
+        // decisión que card_copies: los módulos no se atan por la base de datos).
+        modelBuilder.Entity<DeckCard>(entity =>
+        {
+            entity.ToTable("deck_cards");
+            entity.HasKey(card => new { card.DeckId, card.CardId });
+        });
     }
 }
+
