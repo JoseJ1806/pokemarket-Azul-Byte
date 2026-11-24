@@ -34,9 +34,13 @@ public sealed record CreateCardResult(Card? Card, bool IsReplay, DomainError? Er
 // 4. REGIÓN CRÍTICA: una transacción corta de base de datos que reserva el código, revisa los
 //    ciclos de evolución e inserta la carta ya con las URL de sus imágenes. Solo allí se toman
 //    los candados, y dentro no hay ninguna operación de archivos.
-// 5. Si la carta no llega a confirmarse (error de negocio, repetición de otra solicitud o falla),
+// 5. Con la carta ya confirmada, se invalida la caché del catálogo (después del commit).
+// 6. Si la carta no llega a confirmarse (error de negocio, repetición de otra solicitud o falla),
 //    se borran los archivos guardados en el paso 3 para no dejar huérfanos.
-public sealed class CreateCardUseCase(ICardRepository cards, ProcessImageUseCase images)
+public sealed class CreateCardUseCase(
+    ICardRepository cards,
+    ProcessImageUseCase images,
+    ICatalogCache catalogCache)
 {
     private const string ImagesFolder = "uploads/cards";
 
@@ -73,12 +77,12 @@ public sealed class CreateCardUseCase(ICardRepository cards, ProcessImageUseCase
         {
             // REGIÓN CRÍTICA: desde BeginCreationAsync hasta CommitAsync solo hay operaciones de base
             // de datos. Los candados se liberan solos al terminar la transacción (al salir del using).
-            await using var scope = await cards.BeginCreationAsync(command.IdempotencyKey, typePrefix, cancellationToken);
+            await using var scope = await cards.BeginCreationAsync(request.IdempotencyKey, request.TypePrefix, cancellationToken);
 
             // Otra solicitud con la misma llave pudo terminar mientras esta esperaba su turno.
             var concurrent = await scope.FindExistingAsync(cancellationToken);
             if (concurrent is not null)
-                return ReplayOrConflict(concurrent, command, ability.Code);
+                return ReplayOrConflict(concurrent, request, ability.Code);
 
             var code = await scope.ReserveNextCodeAsync(cancellationToken);
 
@@ -109,6 +113,11 @@ public sealed class CreateCardUseCase(ICardRepository cards, ProcessImageUseCase
 
             await scope.CommitAsync(card, cancellationToken);
             committed = true;
+
+            // La carta nueva debe verse en el catálogo: se invalida la caché. Va DESPUÉS del commit
+            // (antes, otra lectura podría volver a guardar el catálogo viejo) y es fuera de la
+            // transacción, así que no alarga los candados.
+            await catalogCache.InvalidateCatalogAsync(cancellationToken);
             return CreateCardResult.Created(card);
         }
         finally
