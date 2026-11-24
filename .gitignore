@@ -37,3 +37,6 @@ Thumbs.db
 
 # Imagenes generadas al crear cartas y ubicaciones en desarrollo
 src/PokeArena.Api/wwwroot/uploads/
+
+# Resultados locales de la prueba de carga (tests/carga)
+tests/carga/resultados-carga.*

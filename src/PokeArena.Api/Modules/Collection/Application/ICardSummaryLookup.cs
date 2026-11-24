@@ -9,7 +9,13 @@ public sealed record CardSummary(
     string Type,
     string Rarity,
     string? ImageUrl,
-    string? ThumbnailUrl);
+    string? ThumbnailUrl,
+    int Cost = 0,
+    int Power = 0,
+    string? AbilityCode = null,
+    string? AbilityTrigger = null,
+    string? AbilityEffect = null,
+    string? AbilityAffectedType = null);
 
 // PUERTO: DATOS DE PRESENTACIÓN DE CARTAS.
 //

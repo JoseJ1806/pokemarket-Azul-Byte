@@ -3,6 +3,9 @@
     <Project Path="src/PokeArena.Api/PokeArena.Api.csproj" />
     <Project Path="src/PokeArena.GameEngine/PokeArena.GameEngine.csproj" />
   </Folder>
+  <Folder Name="/tools/">
+    <Project Path="tools/PokeArena.CargaDatos/PokeArena.CargaDatos.csproj" />
+  </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/PokeArena.Tests/PokeArena.Tests.csproj" />
   </Folder>

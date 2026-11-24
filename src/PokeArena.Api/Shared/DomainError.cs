@@ -34,6 +34,6 @@ public sealed record DomainError(DomainErrorKind Kind, string Code, string Messa
     public static DomainError Unavailable(string code, string message) =>
         new(DomainErrorKind.Unavailable, code, message);
 
-    public static DomainError NotFound(string code, string message) =>
-        new(DomainErrorKind.NotFound, code, message);
+    public static DomainError NotFound(string code, string message, string? field = null) =>
+        new(DomainErrorKind.NotFound, code, message, field);
 }

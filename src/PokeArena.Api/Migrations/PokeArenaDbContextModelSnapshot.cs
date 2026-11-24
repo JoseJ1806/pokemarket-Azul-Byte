@@ -230,6 +230,51 @@ namespace PokeArena.Api.Migrations
                         });
                 });
 
+            modelBuilder.Entity("PokeArena.Api.Modules.Collection.Domain.Deck", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("IdempotencyKey")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<Guid>("PlayerId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PlayerId", "IdempotencyKey")
+                        .IsUnique();
+
+                    b.HasIndex("PlayerId", "Name")
+                        .IsUnique();
+
+                    b.ToTable("decks", (string)null);
+                });
+
+            modelBuilder.Entity("PokeArena.Api.Modules.Collection.Domain.DeckCard", b =>
+                {
+                    b.Property<Guid>("DeckId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("CardId")
+                        .HasColumnType("integer");
+
+                    b.HasKey("DeckId", "CardId");
+
+                    b.ToTable("deck_cards", (string)null);
+                });
+
             modelBuilder.Entity("PokeArena.Api.Modules.Collection.Domain.InitialDelivery", b =>
                 {
                     b.Property<Guid>("PlayerId")
@@ -347,6 +392,68 @@ namespace PokeArena.Api.Migrations
                     b.HasIndex("Name");
 
                     b.ToTable("locations", (string)null);
+                });
+
+            modelBuilder.Entity("PokeArena.Api.Modules.Matches.Domain.Match", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ChallengerDeckCardIds")
+                        .IsRequired()
+                        .HasColumnType("jsonb");
+
+                    b.Property<Guid>("ChallengerPlayerId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("CurrentTurnPlayerId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("IdempotencyKey")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<int>("LocationId")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("OpponentDeckCardIds")
+                        .IsRequired()
+                        .HasColumnType("jsonb");
+
+                    b.Property<Guid>("OpponentPlayerId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("IdempotencyKey")
+                        .IsUnique();
+
+                    b.HasIndex("ChallengerPlayerId", "OpponentPlayerId");
+
+                    b.ToTable("matches", (string)null);
+                });
+
+            modelBuilder.Entity("PokeArena.Api.Modules.Collection.Domain.DeckCard", b =>
+                {
+                    b.HasOne("PokeArena.Api.Modules.Collection.Domain.Deck", null)
+                        .WithMany("Cards")
+                        .HasForeignKey("DeckId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("PokeArena.Api.Modules.Collection.Domain.Deck", b =>
+                {
+                    b.Navigation("Cards");
                 });
 #pragma warning restore 612, 618
         }

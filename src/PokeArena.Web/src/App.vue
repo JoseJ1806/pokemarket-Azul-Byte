@@ -1,20 +1,24 @@
 <script setup>
 import { ref } from "vue";
 import { guardarToken, obtenerToken } from "./api/clienteApi.js";
+import ArmarDeck from "./components/ArmarDeck.vue";
 import BuscarCartas from "./components/BuscarCartas.vue";
 import CatalogoJugador from "./components/CatalogoJugador.vue";
 import CrearCarta from "./components/CrearCarta.vue";
 import CrearUbicacion from "./components/CrearUbicacion.vue";
 import Bienvenida from "./components/Bienvenida.vue";
 import IniciarSesion from "./components/IniciarSesion.vue";
+import IniciarPartida from "./components/IniciarPartida.vue";
 
 // Las pantallas disponibles. 'id' identifica la pantalla en el código y 'etiqueta'
 // es el texto de su pestaña. Agregar una pantalla nueva empieza por sumar una línea aquí.
 const PANTALLAS = [
   { id: "catalogo", etiqueta: "Catálogo" },
   { id: "buscar", etiqueta: "Buscar cartas" },
+  { id: "deck", etiqueta: "Armar deck" },
   { id: "carta", etiqueta: "Crear carta" },
   { id: "ubicacion", etiqueta: "Crear ubicación" },
+  { id: "partida", etiqueta: "Iniciar partida" },
 ];
 
 // La pantalla que se está viendo ahora.
@@ -115,10 +119,16 @@ function alCerrarSesion() {
   <section v-show="pantalla === 'catalogo'">
     <CatalogoJugador :version-token="versionToken" />
   </section>
+  <section v-show="pantalla === 'deck'">
+    <ArmarDeck :version-token="versionToken" />
+  </section>
   <section v-show="pantalla === 'carta'">
     <CrearCarta :version-token="versionToken" />
   </section>
   <section v-show="pantalla === 'ubicacion'">
     <CrearUbicacion />
+  </section>
+  <section v-show="pantalla === 'partida'">
+    <IniciarPartida />
   </section>
 </template>

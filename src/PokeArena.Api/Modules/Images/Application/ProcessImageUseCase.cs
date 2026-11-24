@@ -45,7 +45,7 @@ public sealed class ProcessImageUseCase(IImageCodec codec, IImageStore store, IL
         if (!AllowedTypes.TryGetValue(upload.ContentType ?? string.Empty, out var extension))
             return PrepareImageResult.Invalid("image debe ser PNG, JPG o WebP.");
 
-        if (upload.Length <= 0 || upload.Length > ImageRequirements.MaxFileSize)
+        if (!ImageRequirements.IsWithinMaxFileSize(upload.Length))
             return PrepareImageResult.Invalid("image no puede superar 5 MB y debe tener contenido.");
 
         var dimensions = codec.Inspect(upload.Content);

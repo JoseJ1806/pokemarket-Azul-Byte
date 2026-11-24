@@ -12,6 +12,10 @@ namespace PokeArena.Api.Modules.Locations.Infrastructure;
 // aunque las solicitudes lleguen a instancias distintas de la API.
 public sealed class EfLocationRepository(PokeArenaDbContext db) : ILocationRepository
 {
+    public Task<Location?> FindByIdAsync(int id, CancellationToken cancellationToken) =>
+        db.Locations.AsNoTracking()
+            .SingleOrDefaultAsync(location => location.Id == id, cancellationToken);
+
     public Task<Location?> FindByIdempotencyKeyAsync(string idempotencyKey, CancellationToken cancellationToken) =>
         db.Locations.AsNoTracking()
             .SingleOrDefaultAsync(location => location.IdempotencyKey == idempotencyKey, cancellationToken);
