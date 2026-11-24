@@ -15,7 +15,7 @@
 
 import { computed, onMounted, ref, watch } from "vue";
 import { obtenerMiColeccion } from "../api/autenticacion.js";
-import { crearDeck, listarMisDecks } from "../api/decks.js";
+import { crearDeck, listarMisDecks, obtenerDeck } from "../api/decks.js";
 import CampoFormulario from "./CampoFormulario.vue";
 import CartaVista from "./CartaVista.vue";
 
@@ -31,6 +31,10 @@ const TAMANO_DECK = 12;
 const cartas = ref([]); // la colección del jugador (una entrada por carta distinta)
 const decks = ref([]); // los decks que ya tiene
 const haySesion = ref(true); // false cuando no hay un jugador con sesión (401 o 404)
+const deckAbierto = ref(null); // el deck cuyas cartas se están viendo (detalle completo de la API)
+let idPedido = null; // último deck pedido (para descartar respuestas viejas)
+const cargandoDeck = ref(false);
+const errorDeck = ref("");
 const seleccion = ref([]); // ids de las cartas elegidas, en el orden en que se eligieron
 const nombre = ref("");
 const llave = ref(nuevaLlave());
@@ -69,6 +73,36 @@ watch([nombre, seleccion], () => {
   aviso.value = "";
 });
 
+// Texto de la habilidad de una carta, o "" si no tiene. La API manda el código y sus partes
+// (cuándo se activa, qué efecto tiene y a qué tipo afecta). "HAB-000" es "sin habilidad".
+function textoHabilidad(carta) {
+  if (!carta.abilityCode || carta.abilityCode === "HAB-000") return "";
+  return [carta.abilityCode, carta.abilityTrigger, carta.abilityEffect, carta.abilityAffectedType]
+    .filter(Boolean)
+    .join(" · ");
+}
+
+// Abre o cierra las cartas de un deck. Un segundo clic sobre el mismo deck lo cierra.
+// El detalle se pide a GET /api/me/decks/{id}: la lista no trae las cartas, solo sus ids.
+async function verDeck(id) {
+  errorDeck.value = "";
+  if (deckAbierto.value?.id === id) {
+    deckAbierto.value = null;
+    return;
+  }
+  cargandoDeck.value = true;
+  deckAbierto.value = null;
+  // Si el jugador hace clic en otro deck mientras este carga, se ignora la respuesta vieja.
+  idPedido = id;
+  try {
+    const detalle = await obtenerDeck(id);
+    if (idPedido === id) deckAbierto.value = detalle;
+  } catch (e) {
+    if (idPedido === id) errorDeck.value = e.message;
+  } finally {
+    if (idPedido === id) cargandoDeck.value = false;
+  }
+}
 async function cargar() {
   try {
     cartas.value = (await obtenerMiColeccion()).cards ?? [];
@@ -168,8 +202,36 @@ watch(() => props.versionToken, cargar);
       <li v-for="deck in decks" :key="deck.id">
         <strong>{{ deck.name }}</strong>
         <span class="nota"> · {{ deck.cardCount }} cartas</span>
+        <button type="button" class="ver-deck" @click="verDeck(deck.id)">
+          {{ deckAbierto?.id === deck.id ? "Ocultar cartas" : "Ver cartas" }}
+        </button>
       </li>
     </ul>
+
+    <p v-if="cargandoDeck" class="nota">Cargando deck...</p>
+    <p v-if="errorDeck" class="mensaje-error">{{ errorDeck }}</p>
+
+    <!-- Detalle del deck elegido: las 12 cartas completas. El costo y la habilidad van en la
+         ranura de CartaVista (el componente solo sabe de poder), igual que el botón de arriba. -->
+    <div v-if="deckAbierto" class="detalle-deck">
+      <h4>{{ deckAbierto.name }}</h4>
+      <ul class="cartas">
+        <li v-for="carta in deckAbierto.cards" :key="carta.cardId">
+          <CartaVista
+            :nombre="carta.name"
+            :tipo="carta.type"
+            :rareza="carta.rarity"
+            :imagen="carta.thumbnailUrl"
+            :poder="carta.power"
+          >
+            <span class="detalle-extra">Costo: {{ carta.cost }}</span>
+            <span class="detalle-extra">
+              Habilidad: {{ textoHabilidad(carta) || "Sin habilidad" }}
+            </span>
+          </CartaVista>
+        </li>
+      </ul>
+    </div>
   </section>
 </template>
 
@@ -193,5 +255,14 @@ watch(() => props.versionToken, cargar);
 .decks li {
   padding: 0.35rem 0;
   border-bottom: 1px solid var(--borde);
+}
+
+.ver-deck {
+  margin-left: 0.75rem;
+}
+
+.detalle-extra {
+  display: block;
+  font-size: 0.85rem;
 }
 </style>

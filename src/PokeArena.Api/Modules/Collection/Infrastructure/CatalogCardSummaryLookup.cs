@@ -16,7 +16,9 @@ public sealed class CatalogCardSummaryLookup(ICardCatalogQuery catalog) : ICardS
         var found = await catalog.GetSummariesAsync(cardIds, cancellationToken);
         return found
             .Select(card => new CardSummary(
-                card.Id, card.Code, card.Name, card.Type, card.Rarity, card.ImageUrl, card.ThumbnailUrl))
+                card.Id, card.Code, card.Name, card.Type, card.Rarity, card.ImageUrl, card.ThumbnailUrl,
+                card.Cost, card.Power,
+                card.AbilityCode, card.AbilityTrigger, card.AbilityEffect, card.AbilityAffectedType))
             .ToList();
     }
 }

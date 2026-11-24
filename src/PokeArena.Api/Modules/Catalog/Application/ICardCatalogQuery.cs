@@ -8,7 +8,13 @@ public sealed record CatalogCardSummary(
     string Type,
     string Rarity,
     string? ImageUrl,
-    string? ThumbnailUrl);
+    string? ThumbnailUrl,
+    int Cost = 0,
+    int Power = 0,
+    string? AbilityCode = null,
+    string? AbilityTrigger = null,
+    string? AbilityEffect = null,
+    string? AbilityAffectedType = null);
 
 // INTERFAZ PÚBLICA DE CONSULTA DEL CATÁLOGO.
 //

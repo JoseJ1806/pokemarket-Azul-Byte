@@ -32,7 +32,13 @@ public sealed record DeckCardResponse(
     string Type,
     string Rarity,
     string? ImageUrl,
-    string? ThumbnailUrl);
+    string? ThumbnailUrl,
+    int Cost,
+    int Power,
+    string? AbilityCode,
+    string? AbilityTrigger,
+    string? AbilityEffect,
+    string? AbilityAffectedType);
 
 // RESPUESTA de GET /api/me/decks/{deckId}: el deck con sus cartas ya presentables.
 public sealed record DeckDetailResponse(
@@ -48,6 +54,8 @@ public sealed record DeckDetailResponse(
             view.Deck.CreatedAt,
             view.Cards
                 .Select(card => new DeckCardResponse(
-                    card.Id, card.Code, card.Name, card.Type, card.Rarity, card.ImageUrl, card.ThumbnailUrl))
+                    card.Id, card.Code, card.Name, card.Type, card.Rarity, card.ImageUrl, card.ThumbnailUrl,
+                    card.Cost, card.Power,
+                    card.AbilityCode, card.AbilityTrigger, card.AbilityEffect, card.AbilityAffectedType))
                 .ToList());
 }

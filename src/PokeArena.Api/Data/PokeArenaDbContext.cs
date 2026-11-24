@@ -261,7 +261,6 @@ public class PokeArenaDbContext(DbContextOptions<PokeArenaDbContext> options)
             entity.Property(balance => balance.PlayerId).ValueGeneratedNever();
         });
 
-<<<<<<< Updated upstream
         modelBuilder.Entity<Match>(entity =>
         {
             entity.ToTable("matches");
@@ -273,7 +272,8 @@ public class PokeArenaDbContext(DbContextOptions<PokeArenaDbContext> options)
             entity.Property(match => match.OpponentDeckCardIds).HasColumnType("jsonb").IsRequired();
             entity.HasIndex(match => match.IdempotencyKey).IsUnique();
             entity.HasIndex(match => new { match.ChallengerPlayerId, match.OpponentPlayerId });
-=======
+        });
+
         // decks: los decks de los jugadores. Los dos índices únicos son la ÚLTIMA BARRERA
         // contra duplicados (el candado por jugador es la primera).
         modelBuilder.Entity<Deck>(entity =>
@@ -302,12 +302,12 @@ public class PokeArenaDbContext(DbContextOptions<PokeArenaDbContext> options)
 
         // deck_cards: las 12 cartas de cada deck. La clave primaria compuesta impide repetir
         // una carta dentro del mismo deck. CardId no tiene llave foránea hacia cards (misma
-        // decisión G que card_copies: los módulos no se atan por la base de datos).
+        // decisión que card_copies: los módulos no se atan por la base de datos).
         modelBuilder.Entity<DeckCard>(entity =>
         {
             entity.ToTable("deck_cards");
             entity.HasKey(card => new { card.DeckId, card.CardId });
->>>>>>> Stashed changes
         });
     }
 }
+
