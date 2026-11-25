@@ -442,6 +442,71 @@ namespace PokeArena.Api.Migrations
                     b.ToTable("matches", (string)null);
                 });
 
+            modelBuilder.Entity("PokeArena.Api.Modules.Matchmaking.Domain.MatchSearch", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset?>("ClosedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Context")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("DeckCardIds")
+                        .IsRequired()
+                        .HasColumnType("jsonb");
+
+                    b.Property<Guid>("DeckId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Elo")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTimeOffset>("LastSeenAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("MatchId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Notice")
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)");
+
+                    b.Property<DateTimeOffset?>("PairedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("PairingId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("PlayerId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PairingId");
+
+                    b.HasIndex("PlayerId")
+                        .IsUnique()
+                        .HasFilter("\"Status\" IN ('Waiting', 'Pairing')");
+
+                    b.HasIndex("PlayerId", "CreatedAt");
+
+                    b.HasIndex("Status", "Context", "Elo");
+
+                    b.ToTable("match_searches", (string)null);
+                });
+
             modelBuilder.Entity("PokeArena.Api.Modules.Collection.Domain.DeckCard", b =>
                 {
                     b.HasOne("PokeArena.Api.Modules.Collection.Domain.Deck", null)
