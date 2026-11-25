@@ -4,6 +4,7 @@ using PokeArena.Api.Modules.Collection.Domain;
 using PokeArena.Api.Modules.Identity.Domain;
 using PokeArena.Api.Modules.Locations.Domain;
 using PokeArena.Api.Modules.Matches.Domain;
+using PokeArena.Api.Modules.Matchmaking.Domain;
 
 namespace PokeArena.Api.Data;
 
@@ -39,6 +40,9 @@ public class PokeArenaDbContext(DbContextOptions<PokeArenaDbContext> options)
     public DbSet<Deck> Decks => Set<Deck>();
 
     public DbSet<DeckCard> DeckCards => Set<DeckCard>();
+
+    // Sprint 3: fila de búsqueda de partida (módulo Emparejamiento). Tabla match_searches.
+    public DbSet<MatchSearch> MatchSearches => Set<MatchSearch>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -307,6 +311,51 @@ public class PokeArenaDbContext(DbContextOptions<PokeArenaDbContext> options)
         {
             entity.ToTable("deck_cards");
             entity.HasKey(card => new { card.DeckId, card.CardId });
+        });
+
+        // ---------------------------------------------------------------------------
+        // MÓDULO EMPAREJAMIENTO (Sprint 3, US Buscar partida y Consultar y salir de la
+        // búsqueda). Decisiones en el ADR-007.
+        // ---------------------------------------------------------------------------
+
+        // match_searches: la fila de búsqueda, compartida por todas las instancias de la API.
+        modelBuilder.Entity<MatchSearch>(entity =>
+        {
+            entity.ToTable("match_searches");
+            entity.HasKey(search => search.Id);
+
+            // El Guid lo asigna la aplicación (Guid versión 7).
+            entity.Property(search => search.Id).ValueGeneratedNever();
+
+            entity.Property(search => search.Context).HasMaxLength(20).IsRequired();
+
+            // Las 12 cartas del deck, copiadas al buscar (mismo formato que matches).
+            entity.Property(search => search.DeckCardIds).HasColumnType("jsonb").IsRequired();
+
+            // Se guarda el nombre del estado ("Waiting"), no su número.
+            entity.Property(search => search.Status)
+                .HasConversion<string>()
+                .HasMaxLength(20)
+                .IsRequired();
+
+            entity.Property(search => search.Notice).HasMaxLength(300);
+
+            // ÍNDICE ÚNICO PARCIAL (RN-16): un jugador tiene como máximo UNA búsqueda abierta,
+            // sin importar el contexto. Solo cuentan las filas en espera o emparejándose; las
+            // cerradas quedan como historial. Es la última barrera, después del candado por
+            // jugador.
+            entity.HasIndex(search => search.PlayerId)
+                .IsUnique()
+                .HasFilter("\"Status\" IN ('Waiting', 'Pairing')");
+
+            // Acelera "la búsqueda más reciente de este jugador".
+            entity.HasIndex(search => new { search.PlayerId, search.CreatedAt });
+
+            // Acelera la búsqueda de rival: en espera, del mismo contexto, por Elo.
+            entity.HasIndex(search => new { search.Status, search.Context, search.Elo });
+
+            // Acelera cerrar las dos búsquedas de un emparejamiento.
+            entity.HasIndex(search => search.PairingId);
         });
     }
 }

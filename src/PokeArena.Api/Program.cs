@@ -13,6 +13,7 @@ using PokeArena.Api.Modules.Locations;
 using PokeArena.Api.Modules.Catalog.Domain;
 using PokeArena.Api.Modules.Collection;  
 using PokeArena.Api.Modules.Matches;
+using PokeArena.Api.Modules.Matchmaking;
 
 // ARCHIVO PRINCIPAL DE LA API.
 // Aquí se registra la configuración, PostgreSQL y los módulos. La autenticación y la
@@ -58,6 +59,7 @@ builder.Services.AddCatalogModule();
 builder.Services.AddLocationsModule();
 builder.Services.AddCollectionModule(); 
 builder.Services.AddMatchesModule();
+builder.Services.AddMatchmakingModule();
 
 // Construye la aplicación con todos los servicios registrados arriba.
 var app = builder.Build();
@@ -383,6 +385,7 @@ app.MapLocationsEndpoints();
 app.MapIdentityEndpoints();
 app.MapCollectionEndpoints();
 app.MapMatchesEndpoints();
+app.MapMatchmakingEndpoints();
 
 app.Run();
 
